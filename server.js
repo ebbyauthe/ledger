@@ -88,30 +88,15 @@ async function requireWorkerSession(req, res, next) {
   next();
 }
 
-function isValidTime(t) {
-  return typeof t === 'string' && /^\d{2}:\d{2}$/.test(t);
-}
 function isValidDate(d) {
   return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
 }
-function computeHours(start, end) {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  let diff = (eh * 60 + em) - (sh * 60 + sm);
-  if (diff <= 0) diff += 24 * 60; // shift crossing midnight
-  return diff / 60;
-}
 
 function parseEntryInput(body) {
-  const { date, startTime, endTime, hours, note } = body || {};
+  const { date, hours, note } = body || {};
   if (!isValidDate(date)) return null;
-  if (typeof hours === 'number' && Number.isFinite(hours) && hours > 0 && hours <= 24) {
-    return { date, hours, note };
-  }
-  if (isValidTime(startTime) && isValidTime(endTime)) {
-    return { date, startTime, endTime, note };
-  }
-  return null;
+  if (typeof hours !== 'number' || !Number.isFinite(hours) || hours <= 0 || hours > 24) return null;
+  return { date, hours, note };
 }
 
 function mapSettings(row) {
@@ -129,33 +114,21 @@ function mapEntry(row) {
   return {
     id: row.id,
     date: row.date,
-    startTime: row.start_time,
-    endTime: row.end_time,
     hours: row.hours,
     note: row.note || '',
     paid: !!row.paid,
   };
 }
 
-async function addEntry(workerId, { date, startTime, endTime, hours, note }) {
+async function addEntry(workerId, { date, hours, note }) {
   const worker = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ?', args: [workerId] })).rows[0];
   if (!worker) return null;
-  let finalHours, finalStart, finalEnd;
-  if (typeof hours === 'number') {
-    finalHours = hours;
-    finalStart = '';
-    finalEnd = '';
-  } else {
-    finalStart = startTime;
-    finalEnd = endTime;
-    finalHours = computeHours(startTime, endTime);
-  }
   const id = uid();
   await db.execute({
     sql: 'INSERT INTO entries (id, worker_id, date, start_time, end_time, hours, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    args: [id, workerId, date, finalStart, finalEnd, finalHours, note || ''],
+    args: [id, workerId, date, '', '', hours, note || ''],
   });
-  return { id, date, startTime: finalStart, endTime: finalEnd, hours: finalHours, note: note || '', paid: false };
+  return { id, date, hours, note: note || '', paid: false };
 }
 
 // ---------- Admin auth ----------
