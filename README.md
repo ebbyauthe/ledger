@@ -5,8 +5,8 @@ between tax, the worker's cut, and Ebenezer's cut, with live CAD→NGN
 conversion.
 
 - `/` — the link to share with workers. Opens straight to a name picker;
-  workers can only see and log their own hours (never rates, tax, other
-  workers, or Ebenezer's cut).
+  workers can only view their own hours and earnings (never rates, tax,
+  other workers, or Ebenezer's cut). Logging hours is admin-only.
 - `/admin` — Ebenezer's view, gated by a single shared password
   (`ADMIN_PASSWORD`). Full rate/tax/worker management.
 
@@ -80,8 +80,10 @@ admin session.
 
 ## What's still an open question (carried over from the project brief)
 
-- **Editing/deleting entries as a worker.** Still admin-only, as before.
-- **Timezones.** Still plain `HH:MM` with no timezone recorded.
+- **Logging/editing/deleting entries as a worker.** All admin-only.
+  Workers can view their own hours and earnings but can't log time
+  themselves — Ebenezer enters hours as a decimal (e.g. `4.22`) on
+  their behalf.
 - **Split percentage.** Still per-worker, defaulting to 50%, changeable
   any time in the admin view (not locked per pay period).
 

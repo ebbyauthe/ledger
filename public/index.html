@@ -1251,12 +1251,6 @@ function paintWorkerSummary(){
               </tr>`).join('')}
             </tbody>
           </table>` : `<div class="empty-entries">No hours logged yet.</div>`}
-          <div class="add-entry-row">
-            <input type="date" name="date" id="wvDate" value="${new Date().toISOString().slice(0,10)}">
-            <input type="number" name="hours" id="wvHours" step="0.01" min="0.01" max="24" placeholder="Hours">
-            <input type="text" name="note" id="wvNote" placeholder="Note (optional)">
-            <button class="btn-primary" id="wvAddEntryBtn">Log time</button>
-          </div>
         </div>
       </div>
     </div>
@@ -1300,21 +1294,6 @@ function paintWorkerSummary(){
         return false;
       }
     });
-  };
-  document.getElementById('wvAddEntryBtn').onclick = async () => {
-    const date = document.getElementById('wvDate').value;
-    const note = document.getElementById('wvNote').value.trim();
-    const hours = parseFloat(document.getElementById('wvHours').value);
-    if(!date || !hours || hours <= 0){
-      alert('Enter a date and number of hours.');
-      return;
-    }
-    try{
-      await api(`/api/entries/${workerViewSelectedId}`, { method: 'POST', body: { date, hours, note } });
-      await loadWorkerSummary();
-    }catch(e){
-      alert('Could not save entry: ' + e.message);
-    }
   };
 }
 

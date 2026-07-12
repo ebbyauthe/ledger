@@ -411,17 +411,6 @@ app.get('/api/workers/:id/summary', requireWorkerSession, async (req, res) => {
   });
 });
 
-app.post('/api/entries/:workerId', requireWorkerSession, async (req, res) => {
-  const { workerId } = req.params;
-  const parsed = parseEntryInput(req.body);
-  if (!parsed) {
-    return res.status(400).json({ error: 'invalid date/time, or hours must be between 0 and 24' });
-  }
-  const entry = await addEntry(workerId, parsed);
-  if (!entry) return res.status(404).json({ error: 'worker not found' });
-  res.status(201).json(entry);
-});
-
 // ---------- App shell ----------
 // "/" is the worker-facing link Ebenezer shares. "/admin" is his own view.
 
