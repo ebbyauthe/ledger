@@ -102,6 +102,18 @@ function computeHours(start, end) {
   return diff / 60;
 }
 
+function parseEntryInput(body) {
+  const { date, startTime, endTime, hours, note } = body || {};
+  if (!isValidDate(date)) return null;
+  if (typeof hours === 'number' && Number.isFinite(hours) && hours > 0 && hours <= 24) {
+    return { date, hours, note };
+  }
+  if (isValidTime(startTime) && isValidTime(endTime)) {
+    return { date, startTime, endTime, note };
+  }
+  return null;
+}
+
 function mapSettings(row) {
   return {
     rate: row.rate,
@@ -125,16 +137,25 @@ function mapEntry(row) {
   };
 }
 
-async function addEntry(workerId, { date, startTime, endTime, note }) {
+async function addEntry(workerId, { date, startTime, endTime, hours, note }) {
   const worker = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ?', args: [workerId] })).rows[0];
   if (!worker) return null;
-  const hours = computeHours(startTime, endTime);
+  let finalHours, finalStart, finalEnd;
+  if (typeof hours === 'number') {
+    finalHours = hours;
+    finalStart = '';
+    finalEnd = '';
+  } else {
+    finalStart = startTime;
+    finalEnd = endTime;
+    finalHours = computeHours(startTime, endTime);
+  }
   const id = uid();
   await db.execute({
     sql: 'INSERT INTO entries (id, worker_id, date, start_time, end_time, hours, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    args: [id, workerId, date, startTime, endTime, hours, note || ''],
+    args: [id, workerId, date, finalStart, finalEnd, finalHours, note || ''],
   });
-  return { id, date, startTime, endTime, hours, note: note || '', paid: false };
+  return { id, date, startTime: finalStart, endTime: finalEnd, hours: finalHours, note: note || '', paid: false };
 }
 
 // ---------- Admin auth ----------
@@ -269,11 +290,11 @@ app.delete('/api/admin/workers/:id', requireAdmin, async (req, res) => {
 
 app.post('/api/admin/entries/:workerId', requireAdmin, async (req, res) => {
   const { workerId } = req.params;
-  const { date, startTime, endTime, note } = req.body || {};
-  if (!isValidDate(date) || !isValidTime(startTime) || !isValidTime(endTime)) {
-    return res.status(400).json({ error: 'invalid date/time' });
+  const parsed = parseEntryInput(req.body);
+  if (!parsed) {
+    return res.status(400).json({ error: 'invalid date/time, or hours must be between 0 and 24' });
   }
-  const entry = await addEntry(workerId, { date, startTime, endTime, note });
+  const entry = await addEntry(workerId, parsed);
   if (!entry) return res.status(404).json({ error: 'worker not found' });
   res.status(201).json(entry);
 });
@@ -420,11 +441,11 @@ app.get('/api/workers/:id/summary', requireWorkerSession, async (req, res) => {
 
 app.post('/api/entries/:workerId', requireWorkerSession, async (req, res) => {
   const { workerId } = req.params;
-  const { date, startTime, endTime, note } = req.body || {};
-  if (!isValidDate(date) || !isValidTime(startTime) || !isValidTime(endTime)) {
-    return res.status(400).json({ error: 'invalid date/time' });
+  const parsed = parseEntryInput(req.body);
+  if (!parsed) {
+    return res.status(400).json({ error: 'invalid date/time, or hours must be between 0 and 24' });
   }
-  const entry = await addEntry(workerId, { date, startTime, endTime, note });
+  const entry = await addEntry(workerId, parsed);
   if (!entry) return res.status(404).json({ error: 'worker not found' });
   res.status(201).json(entry);
 });

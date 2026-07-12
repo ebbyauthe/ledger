@@ -471,14 +471,17 @@ let selectedWorkerId = null;
 let adminAuthenticated = false;
 let modalOpen = false;
 let pollTimer = null;
+let adminEntryMode = 'time'; // 'time' | 'hours'
 
 let workerNames = [];
 let workerViewSelectedId = null;
 let workerSummary = null;
+let workerEntryMode = 'time'; // 'time' | 'hours'
 
 const fmtCAD = n => 'CA$' + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
 const fmtNGN = n => '₦' + n.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
 function fmtTimeRange(start, end){
+  if(!start || !end) return '—';
   return `${start}–${end}`;
 }
 function escapeHtml(str){
@@ -884,10 +887,15 @@ function renderMain(){
       ` : `<div class="empty-entries">No hours logged yet. Add the first entry below.</div>`}
       <div class="add-entry-row">
         <input type="date" name="date" id="entryDate" value="${new Date().toISOString().slice(0,10)}">
+        ${adminEntryMode === 'hours' ? `
+        <input type="number" name="hours" id="entryHours" step="0.01" min="0.01" max="24" placeholder="Hours">
+        ` : `
         <input type="time" name="start" id="entryStart">
         <input type="time" name="end" id="entryEnd">
+        `}
         <input type="text" name="note" id="entryNote" placeholder="Note (optional)">
         <button class="btn-primary" id="addEntryBtn">Add entry</button>
+        <button class="settings-toggle" id="entryModeToggle" type="button">${adminEntryMode === 'hours' ? 'Enter start/end time instead' : 'Enter total hours instead'}</button>
       </div>
     </div>
   `;
@@ -949,17 +957,33 @@ function renderMain(){
     }
   };
 
+  document.getElementById('entryModeToggle').onclick = () => {
+    adminEntryMode = adminEntryMode === 'hours' ? 'time' : 'hours';
+    render();
+  };
+
   document.getElementById('addEntryBtn').onclick = async () => {
     const date = document.getElementById('entryDate').value;
-    const start = document.getElementById('entryStart').value;
-    const end = document.getElementById('entryEnd').value;
     const note = document.getElementById('entryNote').value.trim();
-    if(!date || !start || !end){
-      alert('Enter a date, start time, and end time.');
-      return;
+    let payload;
+    if(adminEntryMode === 'hours'){
+      const hours = parseFloat(document.getElementById('entryHours').value);
+      if(!date || !hours || hours <= 0){
+        alert('Enter a date and number of hours.');
+        return;
+      }
+      payload = { date, hours, note };
+    }else{
+      const start = document.getElementById('entryStart').value;
+      const end = document.getElementById('entryEnd').value;
+      if(!date || !start || !end){
+        alert('Enter a date, start time, and end time.');
+        return;
+      }
+      payload = { date, startTime: start, endTime: end, note };
     }
     try{
-      await addEntryAdmin(worker.id, { date, startTime: start, endTime: end, note });
+      await addEntryAdmin(worker.id, payload);
       render();
     }catch(e){
       alert('Could not save entry: ' + e.message);
@@ -1161,10 +1185,15 @@ function paintWorkerSummary(){
           </table>` : `<div class="empty-entries">No hours logged yet.</div>`}
           <div class="add-entry-row">
             <input type="date" name="date" id="wvDate" value="${new Date().toISOString().slice(0,10)}">
+            ${workerEntryMode === 'hours' ? `
+            <input type="number" name="hours" id="wvHours" step="0.01" min="0.01" max="24" placeholder="Hours">
+            ` : `
             <input type="time" name="start" id="wvStart">
             <input type="time" name="end" id="wvEnd">
+            `}
             <input type="text" name="note" id="wvNote" placeholder="Note (optional)">
             <button class="btn-primary" id="wvAddEntryBtn">Log time</button>
+            <button class="settings-toggle" id="wvEntryModeToggle" type="button">${workerEntryMode === 'hours' ? 'Enter start/end time instead' : 'Enter total hours instead'}</button>
           </div>
         </div>
       </div>
@@ -1210,17 +1239,32 @@ function paintWorkerSummary(){
       }
     });
   };
+  document.getElementById('wvEntryModeToggle').onclick = () => {
+    workerEntryMode = workerEntryMode === 'hours' ? 'time' : 'hours';
+    paintWorkerSummary();
+  };
   document.getElementById('wvAddEntryBtn').onclick = async () => {
     const date = document.getElementById('wvDate').value;
-    const start = document.getElementById('wvStart').value;
-    const end = document.getElementById('wvEnd').value;
     const note = document.getElementById('wvNote').value.trim();
-    if(!date || !start || !end){
-      alert('Enter a date, start time, and end time.');
-      return;
+    let payload;
+    if(workerEntryMode === 'hours'){
+      const hours = parseFloat(document.getElementById('wvHours').value);
+      if(!date || !hours || hours <= 0){
+        alert('Enter a date and number of hours.');
+        return;
+      }
+      payload = { date, hours, note };
+    }else{
+      const start = document.getElementById('wvStart').value;
+      const end = document.getElementById('wvEnd').value;
+      if(!date || !start || !end){
+        alert('Enter a date, start time, and end time.');
+        return;
+      }
+      payload = { date, startTime: start, endTime: end, note };
     }
     try{
-      await api(`/api/entries/${workerViewSelectedId}`, { method: 'POST', body: { date, startTime: start, endTime: end, note } });
+      await api(`/api/entries/${workerViewSelectedId}`, { method: 'POST', body: payload });
       await loadWorkerSummary();
     }catch(e){
       alert('Could not save entry: ' + e.message);
