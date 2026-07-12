@@ -517,15 +517,24 @@ function calcWorkerTotals(workerId){
   const sharePct = worker ? worker.sharePercent : SHARE_DEFAULT;
   const fx = state.settings.exchangeRate || 0;
 
-  let totalHours = 0, gross = 0;
-  list.forEach(e => { totalHours += e.hours; gross += e.hours * rate; });
+  let totalHours = 0, gross = 0, unpaidHours = 0;
+  list.forEach(e => {
+    totalHours += e.hours;
+    gross += e.hours * rate;
+    if(!e.paid) unpaidHours += e.hours;
+  });
   const tax = gross * taxPct / 100;
   const net = gross - tax;
   const workerPay = net * sharePct / 100;
   const myTake = net - workerPay;
   const workerPayNGN = workerPay * fx;
 
-  return { totalHours, gross, tax, net, workerPay, myTake, workerPayNGN };
+  const unpaidGross = unpaidHours * rate;
+  const unpaidNet = unpaidGross - (unpaidGross * taxPct / 100);
+  const unpaidWorkerPay = unpaidNet * sharePct / 100;
+  const unpaidWorkerPayNGN = unpaidWorkerPay * fx;
+
+  return { totalHours, gross, tax, net, workerPay, myTake, workerPayNGN, unpaidWorkerPay, unpaidWorkerPayNGN };
 }
 
 function calcEntryRow(hours, sharePct){
@@ -590,6 +599,19 @@ async function addEntryAdmin(workerId, entry){
 async function deleteEntryAdmin(workerId, entryId){
   await api(`/api/admin/entries/${workerId}/${entryId}`, { method: 'DELETE' });
   state.entries[workerId] = (state.entries[workerId] || []).filter(e => e.id !== entryId);
+}
+
+async function setEntryPaid(workerId, entryId, paid){
+  const updated = await api(`/api/admin/entries/${workerId}/${entryId}/paid`, { method: 'PUT', body: { paid } });
+  const list = state.entries[workerId] || [];
+  const idx = list.findIndex(e => e.id === entryId);
+  if(idx !== -1) list[idx] = updated;
+}
+
+async function markAllPaid(workerId){
+  await api(`/api/admin/entries/${workerId}/mark-all-paid`, { method: 'POST' });
+  const list = state.entries[workerId] || [];
+  list.forEach(e => { e.paid = true; });
 }
 
 async function deleteWorker(workerId, password){
@@ -825,6 +847,10 @@ function renderMain(){
         <div class="label">Your take (after tax &amp; worker pay)</div>
         <div class="value">${fmtCAD(totals.myTake)}</div>
       </div>
+      <div class="receipt-item deduction">
+        <div class="label">Still owed to worker</div>
+        <div class="value">${fmtCAD(totals.unpaidWorkerPay)} · ${fmtNGN(totals.unpaidWorkerPayNGN)}</div>
+      </div>
     </div>
 
     <div class="entries-card">
@@ -832,7 +858,7 @@ function renderMain(){
       <table>
         <thead>
           <tr>
-            <th>Date</th><th>Time</th><th>Hours</th><th>Gross</th><th>Worker pay</th><th>Worker pay ₦</th><th>Note</th><th></th>
+            <th>Date</th><th>Time</th><th>Hours</th><th>Gross</th><th>Worker pay</th><th>Worker pay ₦</th><th>Note</th><th>Paid</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -846,11 +872,16 @@ function renderMain(){
               <td>${fmtCAD(c.workerPay)}</td>
               <td>${fmtNGN(c.workerPayNGN)}</td>
               <td class="note-col">${escapeHtml(e.note || '')}</td>
+              <td><input type="checkbox" class="paid-check" data-id="${e.id}" ${e.paid ? 'checked' : ''}></td>
               <td><button class="del-btn" data-id="${e.id}">Delete</button></td>
             </tr>`;
           }).join('')}
         </tbody>
-      </table>` : `<div class="empty-entries">No hours logged yet. Add the first entry below.</div>`}
+      </table>
+      <div class="add-entry-row">
+        <button class="settings-toggle" id="markAllPaidBtn">Mark all as paid</button>
+      </div>
+      ` : `<div class="empty-entries">No hours logged yet. Add the first entry below.</div>`}
       <div class="add-entry-row">
         <input type="date" name="date" id="entryDate" value="${new Date().toISOString().slice(0,10)}">
         <input type="time" name="start" id="entryStart">
@@ -946,6 +977,31 @@ function renderMain(){
       }
     };
   });
+
+  main.querySelectorAll('.paid-check').forEach(cb => {
+    cb.onchange = async () => {
+      const id = cb.dataset.id;
+      try{
+        await setEntryPaid(worker.id, id, cb.checked);
+        render();
+      }catch(e){
+        alert('Could not update paid status: ' + e.message);
+        cb.checked = !cb.checked;
+      }
+    };
+  });
+
+  const markAllPaidBtn = document.getElementById('markAllPaidBtn');
+  if(markAllPaidBtn){
+    markAllPaidBtn.onclick = async () => {
+      try{
+        await markAllPaid(worker.id);
+        render();
+      }catch(e){
+        alert('Could not mark entries as paid: ' + e.message);
+      }
+    };
+  }
 }
 
 function openModal(innerHtml, onSave, saveLabel){
@@ -1081,12 +1137,17 @@ function paintWorkerSummary(){
               <div class="value">${fmtNGN(w.workerPayNGN)}</div>
             </div>
           </div>
+          <hr class="receipt-divider">
+          <div class="receipt-item deduction">
+            <div class="label">Still owed to you</div>
+            <div class="value">${fmtCAD(w.unpaidWorkerPay)} · ${fmtNGN(w.unpaidWorkerPayNGN)}</div>
+          </div>
         </div>
 
         <div class="entries-card">
           ${w.entries.length ? `
           <table>
-            <thead><tr><th>Date</th><th>Time</th><th>Hours</th><th>Earned (CAD)</th><th>Earned (₦)</th></tr></thead>
+            <thead><tr><th>Date</th><th>Time</th><th>Hours</th><th>Earned (CAD)</th><th>Earned (₦)</th><th>Paid</th></tr></thead>
             <tbody>
               ${w.entries.map(e => `<tr>
                 <td>${e.date}</td>
@@ -1094,6 +1155,7 @@ function paintWorkerSummary(){
                 <td>${e.hours.toFixed(2)}</td>
                 <td>${fmtCAD(e.workerPay)}</td>
                 <td>${fmtNGN(e.workerPayNGN)}</td>
+                <td>${e.paid ? '✓' : '—'}</td>
               </tr>`).join('')}
             </tbody>
           </table>` : `<div class="empty-entries">No hours logged yet.</div>`}

@@ -121,6 +121,7 @@ function mapEntry(row) {
     endTime: row.end_time,
     hours: row.hours,
     note: row.note || '',
+    paid: !!row.paid,
   };
 }
 
@@ -133,7 +134,7 @@ async function addEntry(workerId, { date, startTime, endTime, note }) {
     sql: 'INSERT INTO entries (id, worker_id, date, start_time, end_time, hours, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
     args: [id, workerId, date, startTime, endTime, hours, note || ''],
   });
-  return { id, date, startTime, endTime, hours, note: note || '' };
+  return { id, date, startTime, endTime, hours, note: note || '', paid: false };
 }
 
 // ---------- Admin auth ----------
@@ -286,6 +287,30 @@ app.delete('/api/admin/entries/:workerId/:entryId', requireAdmin, async (req, re
   res.json({ ok: true });
 });
 
+app.put('/api/admin/entries/:workerId/:entryId/paid', requireAdmin, async (req, res) => {
+  const { workerId, entryId } = req.params;
+  const { paid } = req.body || {};
+  const existing = (await db.execute({
+    sql: 'SELECT * FROM entries WHERE id = ? AND worker_id = ?',
+    args: [entryId, workerId],
+  })).rows[0];
+  if (!existing) return res.status(404).json({ error: 'not found' });
+  await db.execute({
+    sql: 'UPDATE entries SET paid = ? WHERE id = ? AND worker_id = ?',
+    args: [paid ? 1 : 0, entryId, workerId],
+  });
+  res.json(mapEntry({ ...existing, paid: paid ? 1 : 0 }));
+});
+
+app.post('/api/admin/entries/:workerId/mark-all-paid', requireAdmin, async (req, res) => {
+  const { workerId } = req.params;
+  await db.execute({
+    sql: 'UPDATE entries SET paid = 1 WHERE worker_id = ? AND paid = 0',
+    args: [workerId],
+  });
+  res.json({ ok: true });
+});
+
 // ---------- Public worker-facing routes ----------
 // These never expose hourly rate, tax %, other workers' data, or Ebenezer's cut.
 
@@ -369,6 +394,7 @@ app.get('/api/workers/:id/summary', requireWorkerSession, async (req, res) => {
 
   let totalHours = 0;
   let totalWorkerPay = 0;
+  let unpaidWorkerPay = 0;
   const entries = entryRows.map(row => {
     const e = mapEntry(row);
     const gross = e.hours * rate;
@@ -376,6 +402,7 @@ app.get('/api/workers/:id/summary', requireWorkerSession, async (req, res) => {
     const workerPay = (net * sharePct) / 100;
     totalHours += e.hours;
     totalWorkerPay += workerPay;
+    if (!e.paid) unpaidWorkerPay += workerPay;
     return { ...e, workerPay, workerPayNGN: workerPay * fx };
   });
 
@@ -385,6 +412,8 @@ app.get('/api/workers/:id/summary', requireWorkerSession, async (req, res) => {
     totalHours,
     workerPay: totalWorkerPay,
     workerPayNGN: totalWorkerPay * fx,
+    unpaidWorkerPay,
+    unpaidWorkerPayNGN: unpaidWorkerPay * fx,
     entries,
   });
 });

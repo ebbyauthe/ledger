@@ -59,6 +59,11 @@ export async function migrate() {
     await db.execute('ALTER TABLE workers ADD COLUMN password_hash TEXT');
   }
 
+  const entryCols = (await db.execute('PRAGMA table_info(entries)')).rows.map(r => r.name);
+  if (!entryCols.includes('paid')) {
+    await db.execute('ALTER TABLE entries ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
+  }
+
   await db.execute(`
     INSERT OR IGNORE INTO settings (id, rate, tax_percent, exchange_rate, exchange_manual)
     VALUES (1, 21.3, 20, NULL, 0)
