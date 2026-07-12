@@ -194,6 +194,19 @@ app.put('/api/admin/workers/:id', requireAdmin, async (req, res) => {
   res.json({ id, name, sharePercent: share, createdAt: existing.created_at });
 });
 
+app.delete('/api/admin/workers/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body || {};
+  if (typeof password !== 'string' || !safeEqual(password, ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'wrong password' });
+  }
+  const existing = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ?', args: [id] })).rows[0];
+  if (!existing) return res.status(404).json({ error: 'not found' });
+  await db.execute({ sql: 'DELETE FROM entries WHERE worker_id = ?', args: [id] });
+  await db.execute({ sql: 'DELETE FROM workers WHERE id = ?', args: [id] });
+  res.json({ ok: true });
+});
+
 app.post('/api/admin/entries/:workerId', requireAdmin, async (req, res) => {
   const { workerId } = req.params;
   const { date, startTime, endTime, note } = req.body || {};

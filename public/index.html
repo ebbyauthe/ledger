@@ -588,6 +588,12 @@ async function deleteEntryAdmin(workerId, entryId){
   state.entries[workerId] = (state.entries[workerId] || []).filter(e => e.id !== entryId);
 }
 
+async function deleteWorker(workerId, password){
+  await api(`/api/admin/workers/${workerId}`, { method: 'DELETE', body: { password } });
+  state.workers = state.workers.filter(w => w.id !== workerId);
+  delete state.entries[workerId];
+}
+
 /* ---------------- Admin: boot + polling ---------------- */
 
 async function bootAdmin(){
@@ -774,6 +780,7 @@ function renderMain(){
       <div class="share-field">
         Worker share of net
         <input type="number" id="shareInput" min="0" max="100" step="1" value="${worker.sharePercent}">%
+        <button class="settings-toggle" id="deleteWorkerBtn" style="color:var(--rust);">Delete worker</button>
       </div>
     </div>
 
@@ -873,6 +880,28 @@ function renderMain(){
     render();
   };
 
+  document.getElementById('deleteWorkerBtn').onclick = () => {
+    openModal(`
+      <h3>Delete ${escapeHtml(worker.name)}?</h3>
+      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 14px;">This permanently deletes this worker and all their logged hours. Enter the admin password to confirm.</p>
+      <div class="field">
+        <label>Admin password</label>
+        <input type="password" id="modalDeletePassword" autofocus>
+      </div>
+    `, async () => {
+      const password = document.getElementById('modalDeletePassword').value;
+      try{
+        await deleteWorker(worker.id, password);
+        selectedWorkerId = null;
+        render();
+        return true;
+      }catch(e){
+        alert('Could not delete: ' + e.message);
+        return false;
+      }
+    }, 'Delete');
+  };
+
   document.getElementById('addEntryBtn').onclick = async () => {
     const date = document.getElementById('entryDate').value;
     const start = document.getElementById('entryStart').value;
@@ -903,14 +932,16 @@ function renderMain(){
   });
 }
 
-function openModal(innerHtml, onSave){
+function openModal(innerHtml, onSave, saveLabel){
   modalOpen = true;
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
+  const label = saveLabel || 'Save';
+  const dangerStyle = saveLabel === 'Delete' ? ' style="background:var(--rust);"' : '';
   overlay.innerHTML = `<div class="modal">${innerHtml}
     <div class="modal-actions">
       <button class="btn-ghost" id="modalCancel">Cancel</button>
-      <button class="btn-primary" id="modalSave">Save</button>
+      <button class="btn-primary" id="modalSave"${dangerStyle}>${label}</button>
     </div>
   </div>`;
   document.body.appendChild(overlay);
