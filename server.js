@@ -419,8 +419,7 @@ app.get('/api/workers/:id/summary', requireWorkerSession, async (req, res) => {
   const entries = entryRows.map(row => {
     const e = mapEntry(row);
     const gross = e.hours * rate;
-    const net = gross - (gross * taxPct) / 100;
-    const workerPay = (net * sharePct) / 100;
+    const workerPay = (gross * sharePct) / 100;
     totalHours += e.hours;
     totalWorkerPay += workerPay;
     if (!e.paid) unpaidWorkerPay += workerPay;

@@ -527,17 +527,15 @@ function calcWorkerTotals(workerId){
     if(!e.paid) unpaidHours += e.hours;
   });
   const tax = gross * taxPct / 100;
-  const net = gross - tax;
-  const workerPay = net * sharePct / 100;
-  const myTake = net - workerPay;
+  const workerPay = gross * sharePct / 100;
+  const myTake = gross - tax - workerPay;
   const workerPayNGN = workerPay * fx;
 
   const unpaidGross = unpaidHours * rate;
-  const unpaidNet = unpaidGross - (unpaidGross * taxPct / 100);
-  const unpaidWorkerPay = unpaidNet * sharePct / 100;
+  const unpaidWorkerPay = unpaidGross * sharePct / 100;
   const unpaidWorkerPayNGN = unpaidWorkerPay * fx;
 
-  return { totalHours, gross, tax, net, workerPay, myTake, workerPayNGN, unpaidWorkerPay, unpaidWorkerPayNGN };
+  return { totalHours, gross, tax, workerPay, myTake, workerPayNGN, unpaidWorkerPay, unpaidWorkerPayNGN };
 }
 
 function calcEntryRow(hours, sharePct){
@@ -546,8 +544,7 @@ function calcEntryRow(hours, sharePct){
   const fx = state.settings.exchangeRate || 0;
   const gross = hours * rate;
   const tax = gross * taxPct / 100;
-  const net = gross - tax;
-  const workerPay = net * sharePct / 100;
+  const workerPay = gross * sharePct / 100;
   const workerPayNGN = workerPay * fx;
   return { gross, tax, workerPay, workerPayNGN };
 }
