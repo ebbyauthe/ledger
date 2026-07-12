@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger — Work Hours Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper: #FAF9F4;
+    --paper-card: #FFFFFF;
+    --ink: #1C2B33;
+    --ink-soft: #5B6B72;
+    --line: #DCD7C8;
+    --accent: #2F6F5E;
+    --accent-soft: #E4EEEA;
+    --rust: #B5502D;
+    --rust-soft: #F4E4DC;
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+  }
+  .app{
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* Sidebar */
+  .sidebar{
+    width: 260px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    padding: 24px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .brand{
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .brand small{
+    display:block;
+    font-family:'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 2px;
+  }
+  .worker-list{
+    list-style:none;
+    margin:0; padding:0;
+    display:flex; flex-direction:column; gap:4px;
+    overflow-y:auto;
+    flex:1;
+  }
+  .worker-list li{
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor:pointer;
+    font-size:14px;
+    font-weight:500;
+    color: var(--ink-soft);
+    display:flex; justify-content:space-between; align-items:center;
+    transition: background .15s ease, color .15s ease;
+  }
+  .worker-list li:hover{ background: var(--accent-soft); color: var(--ink); }
+  .worker-list li.active{ background: var(--accent); color: #fff; }
+  .worker-list li .hrs{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    opacity:0.75;
+  }
+  .add-worker-btn{
+    width:100%;
+    padding: 10px;
+    border-radius:6px;
+    border: 1px dashed var(--line);
+    background: transparent;
+    color: var(--ink-soft);
+    font-family:'Inter', sans-serif;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    transition: border-color .15s ease, color .15s ease;
+  }
+  .add-worker-btn:hover{ border-color: var(--accent); color: var(--accent); }
+
+  .settings-toggle{
+    font-size:12px;
+    color: var(--ink-soft);
+    cursor:pointer;
+    text-decoration: underline;
+    text-decoration-color: var(--line);
+    text-underline-offset: 3px;
+    background:none; border:none; padding:0; text-align:left;
+    font-family:'Inter', sans-serif;
+    display:block;
+  }
+  .settings-toggle:hover{ color: var(--ink); }
+
+  /* Main */
+  .main{
+    flex:1;
+    padding: 32px 40px;
+    max-width: 960px;
+  }
+  .empty-state{
+    margin-top: 80px;
+    text-align:center;
+    color: var(--ink-soft);
+  }
+  .empty-state h2{
+    font-family:'Fraunces', serif;
+    font-weight:500;
+    color: var(--ink);
+    font-size: 22px;
+  }
+
+  .worker-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    margin-bottom: 22px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .worker-header h1{
+    font-family:'Fraunces', serif;
+    font-size: 30px;
+    font-weight:600;
+    margin:0;
+    letter-spacing: -0.01em;
+  }
+  .worker-header .sub{
+    font-size:13px;
+    color: var(--ink-soft);
+    margin-top:4px;
+  }
+  .share-field{
+    display:flex; align-items:center; gap:6px;
+    font-size:13px; color: var(--ink-soft);
+  }
+  .share-field input{
+    width: 54px;
+    font-family:'IBM Plex Mono', monospace;
+    border:1px solid var(--line);
+    border-radius:5px;
+    padding:5px 6px;
+    text-align:right;
+    font-size:13px;
+  }
+
+  /* Receipt summary card */
+  .receipt{
+    background: var(--paper-card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 22px 24px;
+    margin-bottom: 26px;
+    position: relative;
+  }
+  .receipt::before, .receipt::after{
+    content:"";
+    position:absolute;
+    bottom:-1px;
+    width: 16px; height: 16px;
+    background: var(--paper);
+    border-radius: 50%;
+    border: 1px solid var(--line);
+  }
+  .receipt::before{ left: -8px; }
+  .receipt::after{ right: -8px; }
+  .receipt-grid{
+    display:grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 18px;
+  }
+  @media (max-width: 760px){ .receipt-grid{ grid-template-columns: repeat(2,1fr); } }
+  .receipt-item .label{
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+    font-weight:600;
+  }
+  .receipt-item .value{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 19px;
+    font-weight:500;
+  }
+  .receipt-item.deduction .value{ color: var(--rust); }
+  .receipt-item.highlight .value{ color: var(--accent); }
+  .receipt-divider{
+    border: none;
+    border-top: 1px dashed var(--line);
+    margin: 16px 0 14px;
+  }
+
+  /* Entries table */
+  .entries-card{
+    background: var(--paper-card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  table{ width:100%; border-collapse: collapse; }
+  thead th{
+    text-align:left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    font-weight:600;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    background: #FCFBF8;
+  }
+  tbody td{
+    padding: 12px 16px;
+    font-size: 13.5px;
+    border-bottom: 1px solid var(--line);
+    font-family:'IBM Plex Mono', monospace;
+  }
+  tbody td.note-col{ font-family:'Inter', sans-serif; color: var(--ink-soft); }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background: #FCFBF8; }
+  .del-btn{
+    background:none; border:none; cursor:pointer;
+    color: var(--ink-soft);
+    font-family:'Inter', sans-serif;
+    font-size: 12px;
+  }
+  .del-btn:hover{ color: var(--rust); }
+
+  .add-entry-row{
+    display:flex;
+    gap: 10px;
+    padding: 14px 16px;
+    background: #FCFBF8;
+    border-top: 1px solid var(--line);
+    flex-wrap: wrap;
+    align-items:center;
+  }
+  .add-entry-row input{
+    font-family:'IBM Plex Mono', monospace;
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding: 8px 10px;
+    font-size:13px;
+  }
+  .add-entry-row input[name="note"]{
+    font-family:'Inter', sans-serif;
+    flex:1;
+    min-width: 120px;
+  }
+  .add-entry-row input[name="date"]{ width: 150px; }
+  .add-entry-row input[name="hours"]{ width: 90px; }
+  .btn-primary{
+    background: var(--accent);
+    color:#fff;
+    border:none;
+    padding: 9px 16px;
+    border-radius:6px;
+    font-family:'Inter', sans-serif;
+    font-weight:600;
+    font-size:13px;
+    cursor:pointer;
+    transition: opacity .15s ease;
+  }
+  .btn-primary:hover{ opacity:0.88; }
+
+  .empty-entries{
+    padding: 40px 16px;
+    text-align:center;
+    color: var(--ink-soft);
+    font-size:13px;
+  }
+
+  /* Modal */
+  .modal-overlay{
+    position: fixed; inset:0;
+    background: rgba(28,43,51,0.35);
+    display:flex; align-items:center; justify-content:center;
+    z-index: 50;
+  }
+  .modal{
+    background: var(--paper-card);
+    border-radius: 10px;
+    padding: 26px 26px 22px;
+    width: 360px;
+    max-width: 90vw;
+    border: 1px solid var(--line);
+  }
+  .modal h3{
+    font-family:'Fraunces', serif;
+    font-size:19px;
+    margin: 0 0 16px;
+  }
+  .field{ margin-bottom: 14px; }
+  .field label{
+    display:block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    font-weight:600;
+    margin-bottom: 6px;
+  }
+  .field input{
+    width:100%;
+    padding: 9px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    font-family:'Inter', sans-serif;
+    font-size:14px;
+  }
+  .field .hint{
+    font-size: 11px;
+    color: var(--ink-soft);
+    margin-top: 5px;
+  }
+  .modal-actions{
+    display:flex; justify-content:flex-end; gap:10px;
+    margin-top: 18px;
+  }
+  .btn-ghost{
+    background:none;
+    border: 1px solid var(--line);
+    padding: 9px 16px;
+    border-radius:6px;
+    font-family:'Inter', sans-serif;
+    font-weight:600;
+    font-size:13px;
+    cursor:pointer;
+    color: var(--ink-soft);
+  }
+  .btn-ghost:hover{ border-color: var(--ink-soft); color: var(--ink); }
+
+  .fx-note{
+    font-size: 11px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .fx-bar{
+    display:flex;
+    align-items:center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-bottom: 18px;
+  }
+  .fx-bar input{
+    width: 90px;
+    font-family:'IBM Plex Mono', monospace;
+    border:1px solid var(--line);
+    border-radius:5px;
+    padding: 6px 8px;
+    font-size:13px;
+    color: var(--ink);
+  }
+  .fx-tag{
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    background: var(--accent-soft);
+    padding: 3px 7px;
+    border-radius: 4px;
+  }
+  .fx-live-btn{
+    background:none;
+    border:none;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight:600;
+    cursor:pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .loading-banner{
+    font-size:12px;
+    color: var(--ink-soft);
+    padding: 6px 0;
+  }
+  .error-text{
+    color: var(--rust);
+    font-size: 13px;
+    margin: 10px 0 0;
+  }
+
+  /* Worker view */
+  .worker-view-wrap{
+    width: 100%;
+    min-height: 100vh;
+    display:flex;
+    justify-content:center;
+    padding: 60px 20px;
+  }
+  .worker-view-card{
+    width: 420px;
+    max-width: 100%;
+  }
+  .worker-view-card.wide{ width: 560px; }
+  .wv-header{ margin-bottom: 6px; }
+  .wv-title{
+    font-family:'Fraunces', serif;
+    font-size: 28px;
+    font-weight:600;
+    margin: 10px 0 2px;
+  }
+  .wv-sub{
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin: 0 0 20px;
+  }
+  .wv-picker{
+    list-style:none;
+    margin: 18px 0 0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .wv-picker li{
+    background: var(--paper-card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    cursor:pointer;
+    font-size: 15px;
+    font-weight:500;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .wv-picker li:hover{ border-color: var(--accent); background: var(--accent-soft); }
+  .wv-picker li.wv-none{
+    cursor:default;
+    color: var(--ink-soft);
+    font-weight:400;
+    font-size: 13px;
+  }
+  .wv-picker li.wv-none:hover{ border-color: var(--line); background: var(--paper-card); }
+  .wv-grid{ grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 560px){ .wv-grid{ grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="app" id="app"></div>
+
+<script>
+const RATE_DEFAULT = 21.3;
+const TAX_DEFAULT = 20;
+const SHARE_DEFAULT = 50;
+
+const mode = location.pathname.replace(/\/+$/, '') === '/admin' ? 'admin' : 'worker';
+
+let state = { settings: { rate: RATE_DEFAULT, taxPercent: TAX_DEFAULT, exchangeRate: null, exchangeManual: false }, workers: [], entries: {} };
+let selectedWorkerId = null;
+let adminAuthenticated = false;
+let modalOpen = false;
+let pollTimer = null;
+
+let workerNames = [];
+let workerViewSelectedId = null;
+let workerSummary = null;
+
+const fmtUSD = n => '$' + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtNGN = n => '₦' + n.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
+function fmtTimeRange(start, end){
+  return `${start}–${end}`;
+}
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function api(path, opts = {}){
+  const res = await fetch(path, {
+    method: opts.method || 'GET',
+    headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if(res.status === 401){
+    const err = new Error('unauthorized');
+    err.unauthorized = true;
+    throw err;
+  }
+  if(!res.ok){
+    let msg = 'Request failed';
+    try{ const j = await res.json(); msg = j.error || msg; }catch(e){}
+    throw new Error(msg);
+  }
+  if(res.status === 204) return null;
+  return res.json();
+}
+
+/* ---------------- Admin: pay math (pure, operates on already-loaded state) ---------------- */
+
+function calcWorkerTotals(workerId){
+  const worker = state.workers.find(w => w.id === workerId);
+  const list = state.entries[workerId] || [];
+  const rate = state.settings.rate;
+  const taxPct = state.settings.taxPercent;
+  const sharePct = worker ? worker.sharePercent : SHARE_DEFAULT;
+  const fx = state.settings.exchangeRate || 0;
+
+  let totalHours = 0, gross = 0;
+  list.forEach(e => { totalHours += e.hours; gross += e.hours * rate; });
+  const tax = gross * taxPct / 100;
+  const net = gross - tax;
+  const workerPay = net * sharePct / 100;
+  const myTake = net - workerPay;
+  const workerPayNGN = workerPay * fx;
+
+  return { totalHours, gross, tax, net, workerPay, myTake, workerPayNGN };
+}
+
+function calcEntryRow(hours, sharePct){
+  const rate = state.settings.rate;
+  const taxPct = state.settings.taxPercent;
+  const fx = state.settings.exchangeRate || 0;
+  const gross = hours * rate;
+  const tax = gross * taxPct / 100;
+  const net = gross - tax;
+  const workerPay = net * sharePct / 100;
+  const workerPayNGN = workerPay * fx;
+  return { gross, tax, workerPay, workerPayNGN };
+}
+
+/* ---------------- Admin: data mutations ---------------- */
+
+async function saveSettings(){
+  state.settings = await api('/api/admin/settings', { method: 'PUT', body: state.settings });
+}
+
+async function fetchExchangeRate(){
+  try{
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    const data = await res.json();
+    if(data && data.rates && data.rates.NGN){
+      state.settings.exchangeRate = data.rates.NGN;
+      await saveSettings();
+      render();
+    }
+  }catch(e){
+    console.error('exchange rate fetch failed', e);
+    if(!state.settings.exchangeRate){
+      state.settings.exchangeRate = 980;
+      await saveSettings();
+    }
+    render();
+  }
+}
+
+async function addWorker(name, share){
+  const w = await api('/api/admin/workers', { method: 'POST', body: { name, sharePercent: share } });
+  state.workers.push(w);
+  return w;
+}
+
+async function updateWorkerShare(workerId, share){
+  const w = await api(`/api/admin/workers/${workerId}`, { method: 'PUT', body: { sharePercent: share } });
+  const idx = state.workers.findIndex(x => x.id === workerId);
+  if(idx !== -1) state.workers[idx] = w;
+}
+
+async function addEntryAdmin(workerId, entry){
+  const e = await api(`/api/admin/entries/${workerId}`, { method: 'POST', body: entry });
+  if(!state.entries[workerId]) state.entries[workerId] = [];
+  state.entries[workerId].push(e);
+}
+
+async function deleteEntryAdmin(workerId, entryId){
+  await api(`/api/admin/entries/${workerId}/${entryId}`, { method: 'DELETE' });
+  state.entries[workerId] = (state.entries[workerId] || []).filter(e => e.id !== entryId);
+}
+
+/* ---------------- Admin: boot + polling ---------------- */
+
+async function bootAdmin(){
+  try{
+    const session = await api('/api/admin/session');
+    adminAuthenticated = session.authenticated;
+  }catch(e){
+    adminAuthenticated = false;
+  }
+  if(!adminAuthenticated){
+    renderAdminLogin();
+    return;
+  }
+  await loadAdminState();
+}
+
+async function loadAdminState(){
+  state = await api('/api/admin/state');
+  if(!state.settings.exchangeManual) fetchExchangeRate();
+  render();
+  startAdminPolling();
+}
+
+function startAdminPolling(){
+  stopAdminPolling();
+  pollTimer = setInterval(async () => {
+    if(modalOpen || !adminAuthenticated) return;
+    try{
+      state = await api('/api/admin/state');
+      render();
+    }catch(e){ /* transient network error, try again next tick */ }
+  }, 30000);
+}
+function stopAdminPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+function renderAdminLogin(errorMsg){
+  stopAdminPolling();
+  document.getElementById('app').innerHTML = `
+    <div class="worker-view-wrap">
+      <div class="worker-view-card">
+        <h2 class="wv-title">Admin sign-in</h2>
+        <p class="wv-sub">Enter the admin password to continue.</p>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="adminPassword" autofocus>
+        </div>
+        ${errorMsg ? `<p class="error-text">${escapeHtml(errorMsg)}</p>` : ''}
+        <button class="btn-primary" id="adminLoginBtn" style="width:100%;">Sign in</button>
+      </div>
+    </div>
+  `;
+  const submit = async () => {
+    const password = document.getElementById('adminPassword').value;
+    try{
+      await api('/api/admin/login', { method: 'POST', body: { password } });
+      adminAuthenticated = true;
+      await loadAdminState();
+    }catch(e){
+      renderAdminLogin('Wrong password.');
+    }
+  };
+  document.getElementById('adminLoginBtn').onclick = submit;
+  document.getElementById('adminPassword').addEventListener('keydown', (e) => { if(e.key === 'Enter') submit(); });
+}
+
+/* ---------------- Admin: rendering ---------------- */
+
+function render(){
+  document.getElementById('app').innerHTML = `
+    <div class="sidebar">
+      <div class="brand">Ledger<small>Work hours portal</small></div>
+      <ul class="worker-list" id="workerList"></ul>
+      <button class="add-worker-btn" id="addWorkerBtn">+ Add worker</button>
+      <button class="settings-toggle" id="settingsToggle">Rate, tax &amp; exchange settings</button>
+      <a class="settings-toggle" href="/" target="_blank" rel="noopener">Open worker view ↗</a>
+      <button class="settings-toggle" id="logoutBtn">Log out</button>
+    </div>
+    <div class="main" id="main"></div>
+  `;
+  wireStaticButtons();
+  renderSidebar();
+  renderMain();
+}
+
+function wireStaticButtons(){
+  document.getElementById('addWorkerBtn').onclick = () => {
+    openModal(`
+      <h3>Add worker</h3>
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="modalName" placeholder="Worker name" autofocus>
+      </div>
+      <div class="field">
+        <label>Worker share of net (%)</label>
+        <input type="number" id="modalShare" value="${SHARE_DEFAULT}" min="0" max="100">
+        <div class="hint">Percentage of after-tax earnings this worker receives. You can change this later.</div>
+      </div>
+    `, async () => {
+      const name = document.getElementById('modalName').value.trim();
+      let share = parseFloat(document.getElementById('modalShare').value);
+      if(!name) return false;
+      if(isNaN(share)) share = SHARE_DEFAULT;
+      share = Math.min(100, Math.max(0, share));
+      const w = await addWorker(name, share);
+      selectedWorkerId = w.id;
+      render();
+      return true;
+    });
+  };
+
+  document.getElementById('settingsToggle').onclick = () => {
+    const s = state.settings;
+    openModal(`
+      <h3>Rate, tax &amp; exchange</h3>
+      <div class="field">
+        <label>Your hourly rate (USD)</label>
+        <input type="number" id="modalRate" value="${s.rate}" step="0.01" min="0">
+      </div>
+      <div class="field">
+        <label>Tax (%)</label>
+        <input type="number" id="modalTax" value="${s.taxPercent}" min="0" max="100">
+      </div>
+      <div class="field">
+        <label>USD → NGN exchange rate</label>
+        <input type="number" id="modalFx" value="${s.exchangeRate ? s.exchangeRate.toFixed(2) : ''}" step="0.01" min="0">
+        <div class="fx-note">Leave as-is to keep using the live rate. Edit it to lock a manual rate.</div>
+      </div>
+    `, async () => {
+      let rate = parseFloat(document.getElementById('modalRate').value);
+      let tax = parseFloat(document.getElementById('modalTax').value);
+      let fx = parseFloat(document.getElementById('modalFx').value);
+      if(!isNaN(rate)) s.rate = rate;
+      if(!isNaN(tax)) s.taxPercent = Math.min(100, Math.max(0, tax));
+      if(!isNaN(fx) && fx !== s.exchangeRate){
+        s.exchangeRate = fx;
+        s.exchangeManual = true;
+      }
+      await saveSettings();
+      render();
+      return true;
+    });
+  };
+
+  document.getElementById('logoutBtn').onclick = async () => {
+    try{ await api('/api/admin/logout', { method: 'POST' }); }catch(e){}
+    adminAuthenticated = false;
+    renderAdminLogin();
+  };
+}
+
+function renderSidebar(){
+  const ul = document.getElementById('workerList');
+  ul.innerHTML = '';
+  state.workers.forEach(w => {
+    const totals = calcWorkerTotals(w.id);
+    const li = document.createElement('li');
+    li.className = w.id === selectedWorkerId ? 'active' : '';
+    li.innerHTML = `<span>${escapeHtml(w.name)}</span><span class="hrs">${totals.totalHours.toFixed(1)}h</span>`;
+    li.onclick = () => { selectedWorkerId = w.id; render(); };
+    ul.appendChild(li);
+  });
+}
+
+function renderMain(){
+  const main = document.getElementById('main');
+  const worker = state.workers.find(w => w.id === selectedWorkerId);
+
+  if(!worker){
+    main.innerHTML = `<div class="empty-state"><h2>No worker selected</h2><p>Add a worker on the left to start logging hours.</p></div>`;
+    return;
+  }
+
+  const totals = calcWorkerTotals(worker.id);
+  const entries = (state.entries[worker.id] || []).slice().sort((a,b) => b.date.localeCompare(a.date));
+  main.innerHTML = `
+    <div class="worker-header">
+      <div>
+        <h1>${escapeHtml(worker.name)}</h1>
+        <div class="sub">$${state.settings.rate}/hr · ${state.settings.taxPercent}% tax</div>
+      </div>
+      <div class="share-field">
+        Worker share of net
+        <input type="number" id="shareInput" min="0" max="100" step="1" value="${worker.sharePercent}">%
+      </div>
+    </div>
+
+    <div class="fx-bar">
+      <span>1 USD → ₦</span>
+      <input type="number" id="fxQuickInput" step="0.01" min="0" value="${state.settings.exchangeRate ? state.settings.exchangeRate.toFixed(2) : ''}">
+      <span class="fx-tag">${state.settings.exchangeManual ? 'manual' : 'live'}</span>
+      ${state.settings.exchangeManual ? `<button class="fx-live-btn" id="fxUseLiveBtn">Use live rate</button>` : ''}
+    </div>
+
+    <div class="receipt">
+      <div class="receipt-grid">
+        <div class="receipt-item">
+          <div class="label">Hours logged</div>
+          <div class="value">${totals.totalHours.toFixed(1)}</div>
+        </div>
+        <div class="receipt-item">
+          <div class="label">Gross earned</div>
+          <div class="value">${fmtUSD(totals.gross)}</div>
+        </div>
+        <div class="receipt-item deduction">
+          <div class="label">Tax (${state.settings.taxPercent}%)</div>
+          <div class="value">-${fmtUSD(totals.tax)}</div>
+        </div>
+        <div class="receipt-item highlight">
+          <div class="label">Worker pay</div>
+          <div class="value">${fmtUSD(totals.workerPay)}</div>
+        </div>
+        <div class="receipt-item highlight">
+          <div class="label">Worker pay (₦)</div>
+          <div class="value">${fmtNGN(totals.workerPayNGN)}</div>
+        </div>
+      </div>
+      <hr class="receipt-divider">
+      <div class="receipt-item">
+        <div class="label">Your take (after tax &amp; worker pay)</div>
+        <div class="value">${fmtUSD(totals.myTake)}</div>
+      </div>
+    </div>
+
+    <div class="entries-card">
+      ${entries.length ? `
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>Time</th><th>Hours</th><th>Gross</th><th>Worker pay</th><th>Worker pay ₦</th><th>Note</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entries.map(e => {
+            const c = calcEntryRow(e.hours, worker.sharePercent);
+            return `<tr>
+              <td>${e.date}</td>
+              <td>${fmtTimeRange(e.startTime, e.endTime)}</td>
+              <td>${e.hours.toFixed(2)}</td>
+              <td>${fmtUSD(c.gross)}</td>
+              <td>${fmtUSD(c.workerPay)}</td>
+              <td>${fmtNGN(c.workerPayNGN)}</td>
+              <td class="note-col">${escapeHtml(e.note || '')}</td>
+              <td><button class="del-btn" data-id="${e.id}">Delete</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>` : `<div class="empty-entries">No hours logged yet. Add the first entry below.</div>`}
+      <div class="add-entry-row">
+        <input type="date" name="date" id="entryDate" value="${new Date().toISOString().slice(0,10)}">
+        <input type="time" name="start" id="entryStart">
+        <input type="time" name="end" id="entryEnd">
+        <input type="text" name="note" id="entryNote" placeholder="Note (optional)">
+        <button class="btn-primary" id="addEntryBtn">Add entry</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('fxQuickInput').onchange = async (e) => {
+    let v = parseFloat(e.target.value);
+    if(isNaN(v) || v <= 0) return;
+    state.settings.exchangeRate = v;
+    state.settings.exchangeManual = true;
+    await saveSettings();
+    render();
+  };
+  const fxLiveBtn = document.getElementById('fxUseLiveBtn');
+  if(fxLiveBtn){
+    fxLiveBtn.onclick = async () => {
+      state.settings.exchangeManual = false;
+      await saveSettings();
+      fetchExchangeRate();
+    };
+  }
+
+  document.getElementById('shareInput').onchange = async (e) => {
+    let v = parseFloat(e.target.value);
+    if(isNaN(v)) v = SHARE_DEFAULT;
+    v = Math.min(100, Math.max(0, v));
+    await updateWorkerShare(worker.id, v);
+    render();
+  };
+
+  document.getElementById('addEntryBtn').onclick = async () => {
+    const date = document.getElementById('entryDate').value;
+    const start = document.getElementById('entryStart').value;
+    const end = document.getElementById('entryEnd').value;
+    const note = document.getElementById('entryNote').value.trim();
+    if(!date || !start || !end){
+      alert('Enter a date, start time, and end time.');
+      return;
+    }
+    try{
+      await addEntryAdmin(worker.id, { date, startTime: start, endTime: end, note });
+      render();
+    }catch(e){
+      alert('Could not save entry: ' + e.message);
+    }
+  };
+
+  main.querySelectorAll('.del-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      try{
+        await deleteEntryAdmin(worker.id, id);
+        render();
+      }catch(e){
+        alert('Could not delete entry: ' + e.message);
+      }
+    };
+  });
+}
+
+function openModal(innerHtml, onSave){
+  modalOpen = true;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal">${innerHtml}
+    <div class="modal-actions">
+      <button class="btn-ghost" id="modalCancel">Cancel</button>
+      <button class="btn-primary" id="modalSave">Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const close = () => { modalOpen = false; document.body.removeChild(overlay); };
+  overlay.onclick = (e) => { if(e.target === overlay) close(); };
+  overlay.querySelector('#modalCancel').onclick = close;
+  overlay.querySelector('#modalSave').onclick = async () => {
+    const ok = await onSave();
+    if(ok !== false) close();
+  };
+}
+
+/* ---------------- Worker view ---------------- */
+
+async function renderWorkerPicker(){
+  try{
+    workerNames = await api('/api/worker-names');
+  }catch(e){
+    workerNames = [];
+  }
+  paintWorkerPicker();
+}
+
+function paintWorkerPicker(){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="worker-view-wrap">
+      <div class="worker-view-card">
+        <h2 class="wv-title">Who are you?</h2>
+        <p class="wv-sub">Pick your name to see your hours and earnings.</p>
+        <ul class="wv-picker">
+          ${workerNames.map(w => `<li data-id="${w.id}">${escapeHtml(w.name)}</li>`).join('') || '<li class="wv-none">No workers added yet.</li>'}
+        </ul>
+      </div>
+    </div>
+  `;
+  app.querySelectorAll('.wv-picker li[data-id]').forEach(li => {
+    li.onclick = async () => {
+      workerViewSelectedId = li.dataset.id;
+      await loadWorkerSummary();
+    };
+  });
+}
+
+async function loadWorkerSummary(){
+  workerSummary = await api(`/api/workers/${workerViewSelectedId}/summary`);
+  paintWorkerSummary();
+}
+
+function paintWorkerSummary(){
+  const w = workerSummary;
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="worker-view-wrap">
+      <div class="worker-view-card wide">
+        <div class="wv-header">
+          <button class="settings-toggle" id="wvSwitch">← Not ${escapeHtml(w.name)}? Switch</button>
+        </div>
+        <h2 class="wv-title">${escapeHtml(w.name)}</h2>
+        <p class="wv-sub">Your hours and earnings</p>
+
+        <div class="receipt">
+          <div class="receipt-grid wv-grid">
+            <div class="receipt-item">
+              <div class="label">Hours logged</div>
+              <div class="value">${w.totalHours.toFixed(1)}</div>
+            </div>
+            <div class="receipt-item highlight">
+              <div class="label">Earned (USD)</div>
+              <div class="value">${fmtUSD(w.workerPay)}</div>
+            </div>
+            <div class="receipt-item highlight">
+              <div class="label">Earned (₦)</div>
+              <div class="value">${fmtNGN(w.workerPayNGN)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="entries-card">
+          ${w.entries.length ? `
+          <table>
+            <thead><tr><th>Date</th><th>Time</th><th>Hours</th><th>Earned (USD)</th><th>Earned (₦)</th></tr></thead>
+            <tbody>
+              ${w.entries.map(e => `<tr>
+                <td>${e.date}</td>
+                <td>${fmtTimeRange(e.startTime, e.endTime)}</td>
+                <td>${e.hours.toFixed(2)}</td>
+                <td>${fmtUSD(e.workerPay)}</td>
+                <td>${fmtNGN(e.workerPayNGN)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>` : `<div class="empty-entries">No hours logged yet.</div>`}
+          <div class="add-entry-row">
+            <input type="date" name="date" id="wvDate" value="${new Date().toISOString().slice(0,10)}">
+            <input type="time" name="start" id="wvStart">
+            <input type="time" name="end" id="wvEnd">
+            <input type="text" name="note" id="wvNote" placeholder="Note (optional)">
+            <button class="btn-primary" id="wvAddEntryBtn">Log time</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('wvSwitch').onclick = () => {
+    workerViewSelectedId = null;
+    workerSummary = null;
+    paintWorkerPicker();
+  };
+  document.getElementById('wvAddEntryBtn').onclick = async () => {
+    const date = document.getElementById('wvDate').value;
+    const start = document.getElementById('wvStart').value;
+    const end = document.getElementById('wvEnd').value;
+    const note = document.getElementById('wvNote').value.trim();
+    if(!date || !start || !end){
+      alert('Enter a date, start time, and end time.');
+      return;
+    }
+    try{
+      await api(`/api/entries/${workerViewSelectedId}`, { method: 'POST', body: { date, startTime: start, endTime: end, note } });
+      await loadWorkerSummary();
+    }catch(e){
+      alert('Could not save entry: ' + e.message);
+    }
+  };
+}
+
+/* ---------------- Boot ---------------- */
+
+if(mode === 'admin'){
+  bootAdmin();
+}else{
+  renderWorkerPicker();
+}
+</script>
+</body>
+</html>
