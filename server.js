@@ -13,8 +13,6 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const SESSION_COOKIE = 'ledger_admin_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
-const sessions = new Map(); // token -> expiry timestamp
-
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -23,19 +21,19 @@ function uid() {
   return crypto.randomBytes(6).toString('hex');
 }
 
-function isValidSession(req) {
+async function isValidSession(req) {
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return false;
-  const expiry = sessions.get(token);
-  if (!expiry || expiry < Date.now()) {
-    sessions.delete(token);
+  const row = (await db.execute({ sql: 'SELECT expires_at FROM admin_sessions WHERE token = ?', args: [token] })).rows[0];
+  if (!row || row.expires_at < Date.now()) {
+    if (row) await db.execute({ sql: 'DELETE FROM admin_sessions WHERE token = ?', args: [token] });
     return false;
   }
   return true;
 }
 
-function requireAdmin(req, res, next) {
-  if (!isValidSession(req)) return res.status(401).json({ error: 'unauthorized' });
+async function requireAdmin(req, res, next) {
+  if (!(await isValidSession(req))) return res.status(401).json({ error: 'unauthorized' });
   next();
 }
 
@@ -96,14 +94,19 @@ async function addEntry(workerId, { date, startTime, endTime, note }) {
 
 // ---------- Admin auth ----------
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', async (req, res) => {
   const { password } = req.body || {};
   if (!ADMIN_PASSWORD) return res.status(500).json({ error: 'admin password not configured on server' });
   if (typeof password !== 'string' || !safeEqual(password, ADMIN_PASSWORD)) {
     return res.status(401).json({ error: 'wrong password' });
   }
   const token = crypto.randomBytes(24).toString('hex');
-  sessions.set(token, Date.now() + SESSION_TTL_MS);
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  await db.execute({ sql: 'DELETE FROM admin_sessions WHERE expires_at < ?', args: [Date.now()] });
+  await db.execute({
+    sql: 'INSERT INTO admin_sessions (token, expires_at) VALUES (?, ?)',
+    args: [token, expiresAt],
+  });
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
@@ -113,15 +116,15 @@ app.post('/api/admin/login', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/admin/logout', (req, res) => {
+app.post('/api/admin/logout', async (req, res) => {
   const token = req.cookies[SESSION_COOKIE];
-  if (token) sessions.delete(token);
+  if (token) await db.execute({ sql: 'DELETE FROM admin_sessions WHERE token = ?', args: [token] });
   res.clearCookie(SESSION_COOKIE);
   res.json({ ok: true });
 });
 
-app.get('/api/admin/session', (req, res) => {
-  res.json({ authenticated: isValidSession(req) });
+app.get('/api/admin/session', async (req, res) => {
+  res.json({ authenticated: await isValidSession(req) });
 });
 
 // ---------- Admin data ----------
@@ -274,11 +277,16 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-migrate()
-  .then(() => {
-    app.listen(PORT, () => console.log(`Ledger listening on :${PORT}`));
-  })
-  .catch(err => {
-    console.error('Migration failed', err);
-    process.exit(1);
-  });
+try {
+  await migrate();
+} catch (err) {
+  console.error('Migration failed', err);
+  if (!process.env.VERCEL) process.exit(1);
+  throw err;
+}
+
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => console.log(`Ledger listening on :${PORT}`));
+}
+
+export default app;

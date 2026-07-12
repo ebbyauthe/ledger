@@ -49,23 +49,24 @@ Visit `http://localhost:3000/` for the worker view, or
 (The web dashboard at https://app.turso.tech works too, if you'd rather
 not use the CLI — it gives you the same URL and token.)
 
-### 2. Deploy to Render
+### 2. Deploy to Vercel
 
 1. Push this folder to a GitHub repo.
-2. In Render, "New +" → "Web Service" → connect the repo. Render should
-   pick up `render.yaml` automatically (Node, `npm install`, `npm start`).
-   If it doesn't, set those manually and pick the **Free** plan.
-3. Under the service's Environment settings, add:
+2. In Vercel, "Add New..." → "Project" → import the repo. Vercel picks up
+   `vercel.json` and the `api/[...path].js` serverless entry point
+   automatically — no build command needed.
+3. Under the project's Environment Variables settings, add:
    - `ADMIN_PASSWORD` — pick something only you know
    - `TURSO_DATABASE_URL` — from step 1
    - `TURSO_AUTH_TOKEN` — from step 1
-4. Deploy. Render gives you a URL like `https://ledger-xxxx.onrender.com`.
-   - Share `https://ledger-xxxx.onrender.com/` with workers.
-   - Use `https://ledger-xxxx.onrender.com/admin` yourself.
+4. Deploy. Vercel gives you a URL like `https://ledger-xxxx.vercel.app`.
+   - Share `https://ledger-xxxx.vercel.app/` with workers.
+   - Use `https://ledger-xxxx.vercel.app/admin` yourself.
 
-Free-tier Render instances spin down after inactivity and take a few
-seconds to wake back up on the next request — normal for this plan, not a
-bug.
+Requests run as serverless functions — no persistent Node process, so
+admin sessions are stored in the Turso `admin_sessions` table rather than
+in-memory (see `db.js` / `server.js`). This also means there's no
+Render-style spin-down: cold starts are rare and sub-second.
 
 ## What's still an open question (carried over from the project brief)
 
@@ -83,8 +84,9 @@ bug.
 ## File map
 
 - `server.js` — Express app: admin auth, all `/api/*` routes, serves
-  `public/`.
+  `public/` locally. Exports the app for serverless use.
+- `api/[...path].js` — Vercel serverless entry point; wraps `server.js`.
+- `vercel.json` — routes `/admin` to the static frontend on Vercel.
 - `db.js` — Turso/libSQL client + schema migration.
 - `public/index.html` — the whole frontend (worker view + admin view).
-- `render.yaml` — Render blueprint (optional convenience for step 2 above).
 - `.env.example` — copy to `.env` for local dev.

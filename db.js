@@ -40,6 +40,13 @@ export async function migrate() {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      token TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL
+    )
+  `);
+
+  await db.execute(`
     INSERT OR IGNORE INTO settings (id, rate, tax_percent, exchange_rate, exchange_manual)
     VALUES (1, 21.3, 20, NULL, 0)
   `);
