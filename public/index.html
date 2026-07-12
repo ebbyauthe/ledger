@@ -465,6 +465,7 @@ const TAX_DEFAULT = 20;
 const SHARE_DEFAULT = 50;
 
 const mode = location.pathname.replace(/\/+$/, '') === '/admin' ? 'admin' : 'worker';
+const OVERVIEW_ID = '__overview__';
 
 let state = { settings: { rate: RATE_DEFAULT, taxPercent: TAX_DEFAULT, exchangeRate: null, exchangeManual: false }, workers: [], entries: {} };
 let selectedWorkerId = null;
@@ -536,6 +537,26 @@ function calcWorkerTotals(workerId){
   const unpaidWorkerPayNGN = unpaidWorkerPay * fx;
 
   return { totalHours, gross, tax, workerPay, myTake, workerPayNGN, unpaidWorkerPay, unpaidWorkerPayNGN };
+}
+
+function calcAllWorkersTotals(){
+  const fx = state.settings.exchangeRate || 0;
+  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, myTake = 0, unpaidWorkerPay = 0;
+  const perWorker = state.workers.map(w => {
+    const t = calcWorkerTotals(w.id);
+    totalHours += t.totalHours;
+    gross += t.gross;
+    tax += t.tax;
+    workerPay += t.workerPay;
+    myTake += t.myTake;
+    unpaidWorkerPay += t.unpaidWorkerPay;
+    return { worker: w, totals: t };
+  });
+  return {
+    totalHours, gross, tax, workerPay, myTake, unpaidWorkerPay,
+    workerPayNGN: workerPay * fx, unpaidWorkerPayNGN: unpaidWorkerPay * fx,
+    perWorker,
+  };
 }
 
 function calcEntryRow(hours, sharePct){
@@ -716,9 +737,9 @@ function wireStaticButtons(){
         <input type="text" id="modalName" placeholder="Worker name" autofocus>
       </div>
       <div class="field">
-        <label>Worker share of net (%)</label>
+        <label>Worker share of gross (%)</label>
         <input type="number" id="modalShare" value="${SHARE_DEFAULT}" min="0" max="100">
-        <div class="hint">Percentage of after-tax earnings this worker receives. You can change this later.</div>
+        <div class="hint">Percentage of gross earnings this worker receives. You can change this later.</div>
       </div>
     `, async () => {
       const name = document.getElementById('modalName').value.trim();
@@ -777,6 +798,13 @@ function wireStaticButtons(){
 function renderSidebar(){
   const ul = document.getElementById('workerList');
   ul.innerHTML = '';
+
+  const overviewLi = document.createElement('li');
+  overviewLi.className = selectedWorkerId === OVERVIEW_ID ? 'active' : '';
+  overviewLi.innerHTML = `<span>📊 All workers overview</span>`;
+  overviewLi.onclick = () => { selectedWorkerId = OVERVIEW_ID; render(); };
+  ul.appendChild(overviewLi);
+
   state.workers.forEach(w => {
     const totals = calcWorkerTotals(w.id);
     const li = document.createElement('li');
@@ -789,6 +817,12 @@ function renderSidebar(){
 
 function renderMain(){
   const main = document.getElementById('main');
+
+  if(selectedWorkerId === OVERVIEW_ID){
+    renderOverviewMain(main);
+    return;
+  }
+
   const worker = state.workers.find(w => w.id === selectedWorkerId);
 
   if(!worker){
@@ -805,7 +839,7 @@ function renderMain(){
         <div class="sub">CA$${state.settings.rate}/hr · ${state.settings.taxPercent}% tax</div>
       </div>
       <div class="share-field">
-        Worker share of net
+        Worker share of gross
         <input type="number" id="shareInput" min="0" max="100" step="1" value="${worker.sharePercent}">%
         <button class="settings-toggle" id="resetPasswordBtn">Reset password</button>
         <button class="settings-toggle" id="deleteWorkerBtn" style="color:var(--rust);">Delete worker</button>
@@ -1023,6 +1057,74 @@ function renderMain(){
       }
     };
   }
+}
+
+function renderOverviewMain(main){
+  const totals = calcAllWorkersTotals();
+  const rows = totals.perWorker.slice().sort((a,b) => b.totals.gross - a.totals.gross);
+
+  main.innerHTML = `
+    <div class="worker-header">
+      <div>
+        <h1>All workers overview</h1>
+        <div class="sub">CA$${state.settings.rate}/hr · ${state.settings.taxPercent}% tax · ${state.workers.length} worker${state.workers.length === 1 ? '' : 's'}</div>
+      </div>
+    </div>
+
+    <div class="receipt">
+      <div class="receipt-grid">
+        <div class="receipt-item">
+          <div class="label">Hours logged</div>
+          <div class="value">${totals.totalHours.toFixed(1)}</div>
+        </div>
+        <div class="receipt-item">
+          <div class="label">Gross earned</div>
+          <div class="value">${fmtCAD(totals.gross)}</div>
+        </div>
+        <div class="receipt-item deduction">
+          <div class="label">Tax</div>
+          <div class="value">-${fmtCAD(totals.tax)}</div>
+        </div>
+        <div class="receipt-item highlight">
+          <div class="label">Worker pay (all)</div>
+          <div class="value">${fmtCAD(totals.workerPay)}</div>
+        </div>
+        <div class="receipt-item highlight">
+          <div class="label">Worker pay (₦)</div>
+          <div class="value">${fmtNGN(totals.workerPayNGN)}</div>
+        </div>
+      </div>
+      <hr class="receipt-divider">
+      <div class="receipt-item">
+        <div class="label">Your take (after tax &amp; worker pay)</div>
+        <div class="value">${fmtCAD(totals.myTake)}</div>
+      </div>
+      <div class="receipt-item deduction">
+        <div class="label">Still owed across all workers</div>
+        <div class="value">${fmtCAD(totals.unpaidWorkerPay)} · ${fmtNGN(totals.unpaidWorkerPayNGN)}</div>
+      </div>
+    </div>
+
+    <div class="entries-card">
+      ${rows.length ? `
+      <table>
+        <thead>
+          <tr>
+            <th>Worker</th><th>Hours</th><th>Gross</th><th>Worker pay</th><th>Still owed</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `<tr>
+            <td>${escapeHtml(r.worker.name)}</td>
+            <td>${r.totals.totalHours.toFixed(2)}</td>
+            <td>${fmtCAD(r.totals.gross)}</td>
+            <td>${fmtCAD(r.totals.workerPay)}</td>
+            <td>${fmtCAD(r.totals.unpaidWorkerPay)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : `<div class="empty-entries">No workers added yet.</div>`}
+    </div>
+  `;
 }
 
 function openModal(innerHtml, onSave, saveLabel){
