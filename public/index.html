@@ -577,6 +577,10 @@ async function updateWorkerShare(workerId, share){
   if(idx !== -1) state.workers[idx] = w;
 }
 
+async function resetWorkerPassword(workerId){
+  return api(`/api/admin/workers/${workerId}/reset-password`, { method: 'POST' });
+}
+
 async function addEntryAdmin(workerId, entry){
   const e = await api(`/api/admin/entries/${workerId}`, { method: 'POST', body: entry });
   if(!state.entries[workerId]) state.entries[workerId] = [];
@@ -703,6 +707,7 @@ function wireStaticButtons(){
       const w = await addWorker(name, share);
       selectedWorkerId = w.id;
       render();
+      alert(`Share this password with ${w.name} so they can log in at the worker link:\n\n${w.password}\n\nThey can change it themselves later.`);
       return true;
     });
   };
@@ -775,11 +780,12 @@ function renderMain(){
     <div class="worker-header">
       <div>
         <h1>${escapeHtml(worker.name)}</h1>
-        <div class="sub">$${state.settings.rate}/hr · ${state.settings.taxPercent}% tax</div>
+        <div class="sub">CA$${state.settings.rate}/hr · ${state.settings.taxPercent}% tax</div>
       </div>
       <div class="share-field">
         Worker share of net
         <input type="number" id="shareInput" min="0" max="100" step="1" value="${worker.sharePercent}">%
+        <button class="settings-toggle" id="resetPasswordBtn">Reset password</button>
         <button class="settings-toggle" id="deleteWorkerBtn" style="color:var(--rust);">Delete worker</button>
       </div>
     </div>
@@ -902,6 +908,16 @@ function renderMain(){
     }, 'Delete');
   };
 
+  document.getElementById('resetPasswordBtn').onclick = async () => {
+    if(!confirm(`Reset ${worker.name}'s password? Their old password will stop working immediately.`)) return;
+    try{
+      const { password } = await resetWorkerPassword(worker.id);
+      alert(`New password for ${worker.name}:\n\n${password}\n\nShare this with them directly.`);
+    }catch(e){
+      alert('Could not reset password: ' + e.message);
+    }
+  };
+
   document.getElementById('addEntryBtn').onclick = async () => {
     const date = document.getElementById('entryDate').value;
     const start = document.getElementById('entryStart').value;
@@ -956,6 +972,18 @@ function openModal(innerHtml, onSave, saveLabel){
 
 /* ---------------- Worker view ---------------- */
 
+async function bootWorkerView(){
+  try{
+    const session = await api('/api/workers/session');
+    if(session && session.workerId){
+      workerViewSelectedId = session.workerId;
+      await loadWorkerSummary();
+      return;
+    }
+  }catch(e){}
+  renderWorkerPicker();
+}
+
 async function renderWorkerPicker(){
   try{
     workerNames = await api('/api/worker-names');
@@ -979,11 +1007,45 @@ function paintWorkerPicker(){
     </div>
   `;
   app.querySelectorAll('.wv-picker li[data-id]').forEach(li => {
-    li.onclick = async () => {
-      workerViewSelectedId = li.dataset.id;
-      await loadWorkerSummary();
+    li.onclick = () => {
+      const worker = workerNames.find(w => w.id === li.dataset.id);
+      paintWorkerLogin(worker);
     };
   });
+}
+
+function paintWorkerLogin(worker, errorMsg){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="worker-view-wrap">
+      <div class="worker-view-card">
+        <button class="settings-toggle" id="wvLoginBack">← Not ${escapeHtml(worker.name)}?</button>
+        <h2 class="wv-title">${escapeHtml(worker.name)}</h2>
+        <p class="wv-sub">Enter your password to continue.</p>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="wvPassword" autofocus>
+        </div>
+        ${errorMsg ? `<p class="error-text">${escapeHtml(errorMsg)}</p>` : ''}
+        <button class="btn-primary" id="wvLoginBtn" style="width:100%;">Continue</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('wvLoginBack').onclick = () => paintWorkerPicker();
+  const submit = async () => {
+    const password = document.getElementById('wvPassword').value;
+    try{
+      await api(`/api/workers/${worker.id}/login`, { method: 'POST', body: { password } });
+      workerViewSelectedId = worker.id;
+      await loadWorkerSummary();
+    }catch(e){
+      paintWorkerLogin(worker, e.message === 'no password set, ask for a password reset'
+        ? 'No password set yet — ask Ebenezer to set one for you.'
+        : 'Wrong password.');
+    }
+  };
+  document.getElementById('wvLoginBtn').onclick = submit;
+  document.getElementById('wvPassword').addEventListener('keydown', (e) => { if(e.key === 'Enter') submit(); });
 }
 
 async function loadWorkerSummary(){
@@ -999,6 +1061,7 @@ function paintWorkerSummary(){
       <div class="worker-view-card wide">
         <div class="wv-header">
           <button class="settings-toggle" id="wvSwitch">← Not ${escapeHtml(w.name)}? Switch</button>
+          <button class="settings-toggle" id="wvChangePassword">Change password</button>
         </div>
         <h2 class="wv-title">${escapeHtml(w.name)}</h2>
         <p class="wv-sub">Your hours and earnings</p>
@@ -1045,10 +1108,45 @@ function paintWorkerSummary(){
       </div>
     </div>
   `;
-  document.getElementById('wvSwitch').onclick = () => {
+  document.getElementById('wvSwitch').onclick = async () => {
+    try{ await api('/api/workers/logout', { method: 'POST' }); }catch(e){}
     workerViewSelectedId = null;
     workerSummary = null;
-    paintWorkerPicker();
+    renderWorkerPicker();
+  };
+  document.getElementById('wvChangePassword').onclick = () => {
+    openModal(`
+      <h3>Change password</h3>
+      <div class="field">
+        <label>Current password</label>
+        <input type="password" id="modalCurrentPassword" autofocus>
+      </div>
+      <div class="field">
+        <label>New password</label>
+        <input type="password" id="modalNewPassword">
+        <div class="hint">At least 6 characters.</div>
+      </div>
+      <div class="field">
+        <label>Confirm new password</label>
+        <input type="password" id="modalConfirmPassword">
+      </div>
+    `, async () => {
+      const currentPassword = document.getElementById('modalCurrentPassword').value;
+      const newPassword = document.getElementById('modalNewPassword').value;
+      const confirmPassword = document.getElementById('modalConfirmPassword').value;
+      if(newPassword !== confirmPassword){
+        alert('New password and confirmation do not match.');
+        return false;
+      }
+      try{
+        await api(`/api/workers/${w.id}/password`, { method: 'PUT', body: { currentPassword, newPassword } });
+        alert('Password changed.');
+        return true;
+      }catch(e){
+        alert('Could not change password: ' + e.message);
+        return false;
+      }
+    });
   };
   document.getElementById('wvAddEntryBtn').onclick = async () => {
     const date = document.getElementById('wvDate').value;
@@ -1073,7 +1171,7 @@ function paintWorkerSummary(){
 if(mode === 'admin'){
   bootAdmin();
 }else{
-  renderWorkerPicker();
+  bootWorkerView();
 }
 </script>
 </body>

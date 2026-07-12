@@ -47,6 +47,19 @@ export async function migrate() {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS worker_sessions (
+      token TEXT PRIMARY KEY,
+      worker_id TEXT NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+      expires_at INTEGER NOT NULL
+    )
+  `);
+
+  const workerCols = (await db.execute('PRAGMA table_info(workers)')).rows.map(r => r.name);
+  if (!workerCols.includes('password_hash')) {
+    await db.execute('ALTER TABLE workers ADD COLUMN password_hash TEXT');
+  }
+
+  await db.execute(`
     INSERT OR IGNORE INTO settings (id, rate, tax_percent, exchange_rate, exchange_manual)
     VALUES (1, 21.3, 20, NULL, 0)
   `);

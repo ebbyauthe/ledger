@@ -68,14 +68,18 @@ admin sessions are stored in the Turso `admin_sessions` table rather than
 in-memory (see `db.js` / `server.js`). This also means there's no
 Render-style spin-down: cold starts are rare and sub-second.
 
+## Per-worker access control
+
+Each worker gets a random password when Ebenezer adds them (shown once in
+the admin UI so it can be shared directly). Picking a name on `/` now
+requires that password before showing hours or letting you log time —
+the `/admin` view can reset a worker's password if they lose it, and
+workers can change their own password later from their view. Sessions
+are stored server-side (`worker_sessions` table), same pattern as the
+admin session.
+
 ## What's still an open question (carried over from the project brief)
 
-- **Per-worker access control.** Right now the worker link has no
-  per-person login — anyone with the link can pick any name from the
-  worker list and log time as them. The `/admin` password stops outsiders
-  from seeing rates/tax/other workers, but doesn't stop one worker from
-  logging time as another. A lightweight per-worker PIN would close this
-  if it becomes a problem.
 - **Editing/deleting entries as a worker.** Still admin-only, as before.
 - **Timezones.** Still plain `HH:MM` with no timezone recorded.
 - **Split percentage.** Still per-worker, defaulting to 50%, changeable

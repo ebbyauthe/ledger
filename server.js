@@ -12,6 +12,8 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const SESSION_COOKIE = 'ledger_admin_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+const WORKER_SESSION_COOKIE = 'ledger_worker_session';
+const PASSWORD_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'; // no 0/O/1/l/I
 
 app.use(express.json());
 app.use(cookieParser());
@@ -42,6 +44,48 @@ function safeEqual(a, b) {
   const bufB = Buffer.from(b);
   if (bufA.length !== bufB.length) return false;
   return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function generatePassword(length = 10) {
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += PASSWORD_CHARS[crypto.randomInt(0, PASSWORD_CHARS.length)];
+  }
+  return out;
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 32).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored) return false;
+  const [salt, hash] = stored.split(':');
+  if (!salt || !hash) return false;
+  const candidate = crypto.scryptSync(password, salt, 32).toString('hex');
+  const bufA = Buffer.from(candidate);
+  const bufB = Buffer.from(hash);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+async function isValidWorkerSession(req, workerId) {
+  const token = req.cookies[WORKER_SESSION_COOKIE];
+  if (!token) return false;
+  const row = (await db.execute({ sql: 'SELECT worker_id, expires_at FROM worker_sessions WHERE token = ?', args: [token] })).rows[0];
+  if (!row || row.expires_at < Date.now()) {
+    if (row) await db.execute({ sql: 'DELETE FROM worker_sessions WHERE token = ?', args: [token] });
+    return false;
+  }
+  return row.worker_id === workerId;
+}
+
+async function requireWorkerSession(req, res, next) {
+  const workerId = req.params.id || req.params.workerId;
+  if (!(await isValidWorkerSession(req, workerId))) return res.status(401).json({ error: 'unauthorized' });
+  next();
 }
 
 function isValidTime(t) {
@@ -172,11 +216,25 @@ app.post('/api/admin/workers', requireAdmin, async (req, res) => {
   share = Math.min(100, Math.max(0, share));
   const id = uid();
   const createdAt = Date.now();
+  const password = generatePassword();
   await db.execute({
-    sql: 'INSERT INTO workers (id, name, share_percent, created_at) VALUES (?, ?, ?, ?)',
-    args: [id, name, share, createdAt],
+    sql: 'INSERT INTO workers (id, name, share_percent, created_at, password_hash) VALUES (?, ?, ?, ?, ?)',
+    args: [id, name, share, createdAt, hashPassword(password)],
   });
-  res.status(201).json({ id, name, sharePercent: share, createdAt });
+  res.status(201).json({ id, name, sharePercent: share, createdAt, password });
+});
+
+app.post('/api/admin/workers/:id/reset-password', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const existing = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ?', args: [id] })).rows[0];
+  if (!existing) return res.status(404).json({ error: 'not found' });
+  const password = generatePassword();
+  await db.execute({
+    sql: 'UPDATE workers SET password_hash = ? WHERE id = ?',
+    args: [hashPassword(password), id],
+  });
+  await db.execute({ sql: 'DELETE FROM worker_sessions WHERE worker_id = ?', args: [id] });
+  res.json({ password });
 });
 
 app.put('/api/admin/workers/:id', requireAdmin, async (req, res) => {
@@ -203,6 +261,7 @@ app.delete('/api/admin/workers/:id', requireAdmin, async (req, res) => {
   const existing = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ?', args: [id] })).rows[0];
   if (!existing) return res.status(404).json({ error: 'not found' });
   await db.execute({ sql: 'DELETE FROM entries WHERE worker_id = ?', args: [id] });
+  await db.execute({ sql: 'DELETE FROM worker_sessions WHERE worker_id = ?', args: [id] });
   await db.execute({ sql: 'DELETE FROM workers WHERE id = ?', args: [id] });
   res.json({ ok: true });
 });
@@ -235,7 +294,65 @@ app.get('/api/worker-names', async (req, res) => {
   res.json(rows.map(r => ({ id: r.id, name: r.name })));
 });
 
-app.get('/api/workers/:id/summary', async (req, res) => {
+app.get('/api/workers/session', async (req, res) => {
+  const token = req.cookies[WORKER_SESSION_COOKIE];
+  if (!token) return res.json({ workerId: null });
+  const row = (await db.execute({ sql: 'SELECT worker_id, expires_at FROM worker_sessions WHERE token = ?', args: [token] })).rows[0];
+  if (!row || row.expires_at < Date.now()) return res.json({ workerId: null });
+  res.json({ workerId: row.worker_id });
+});
+
+app.post('/api/workers/:id/login', async (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body || {};
+  const worker = (await db.execute({ sql: 'SELECT password_hash FROM workers WHERE id = ?', args: [id] })).rows[0];
+  if (!worker) return res.status(404).json({ error: 'not found' });
+  if (!worker.password_hash) return res.status(409).json({ error: 'no password set, ask for a password reset' });
+  if (typeof password !== 'string' || !verifyPassword(password, worker.password_hash)) {
+    return res.status(401).json({ error: 'wrong password' });
+  }
+  const token = crypto.randomBytes(24).toString('hex');
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  await db.execute({ sql: 'DELETE FROM worker_sessions WHERE expires_at < ?', args: [Date.now()] });
+  await db.execute({
+    sql: 'INSERT INTO worker_sessions (token, worker_id, expires_at) VALUES (?, ?, ?)',
+    args: [token, id, expiresAt],
+  });
+  res.cookie(WORKER_SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SESSION_TTL_MS,
+  });
+  res.json({ ok: true });
+});
+
+app.post('/api/workers/logout', async (req, res) => {
+  const token = req.cookies[WORKER_SESSION_COOKIE];
+  if (token) await db.execute({ sql: 'DELETE FROM worker_sessions WHERE token = ?', args: [token] });
+  res.clearCookie(WORKER_SESSION_COOKIE);
+  res.json({ ok: true });
+});
+
+app.put('/api/workers/:id/password', requireWorkerSession, async (req, res) => {
+  const { id } = req.params;
+  const { currentPassword, newPassword } = req.body || {};
+  const worker = (await db.execute({ sql: 'SELECT password_hash FROM workers WHERE id = ?', args: [id] })).rows[0];
+  if (!worker) return res.status(404).json({ error: 'not found' });
+  if (typeof currentPassword !== 'string' || !verifyPassword(currentPassword, worker.password_hash)) {
+    return res.status(401).json({ error: 'wrong current password' });
+  }
+  if (typeof newPassword !== 'string' || newPassword.length < 6) {
+    return res.status(400).json({ error: 'new password must be at least 6 characters' });
+  }
+  await db.execute({
+    sql: 'UPDATE workers SET password_hash = ? WHERE id = ?',
+    args: [hashPassword(newPassword), id],
+  });
+  res.json({ ok: true });
+});
+
+app.get('/api/workers/:id/summary', requireWorkerSession, async (req, res) => {
   const { id } = req.params;
   const workerRow = (await db.execute({ sql: 'SELECT * FROM workers WHERE id = ?', args: [id] })).rows[0];
   if (!workerRow) return res.status(404).json({ error: 'not found' });
@@ -272,7 +389,7 @@ app.get('/api/workers/:id/summary', async (req, res) => {
   });
 });
 
-app.post('/api/entries/:workerId', async (req, res) => {
+app.post('/api/entries/:workerId', requireWorkerSession, async (req, res) => {
   const { workerId } = req.params;
   const { date, startTime, endTime, note } = req.body || {};
   if (!isValidDate(date) || !isValidTime(startTime) || !isValidTime(endTime)) {
