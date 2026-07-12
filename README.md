@@ -1,7 +1,7 @@
 # Ledger — Work Hours Portal
 
 A small hosted app for tracking freelance worker hours and splitting pay
-between tax, the worker's cut, and Ebenezer's cut, with live USD→NGN
+between tax, the worker's cut, and Ebenezer's cut, with live CAD→NGN
 conversion.
 
 - `/` — the link to share with workers. Opens straight to a name picker;

@@ -476,7 +476,7 @@ let workerNames = [];
 let workerViewSelectedId = null;
 let workerSummary = null;
 
-const fmtUSD = n => '$' + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtCAD = n => 'CA$' + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
 const fmtNGN = n => '₦' + n.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
 function fmtTimeRange(start, end){
   return `${start}–${end}`;
@@ -548,7 +548,7 @@ async function saveSettings(){
 
 async function fetchExchangeRate(){
   try{
-    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    const res = await fetch('https://open.er-api.com/v6/latest/CAD');
     const data = await res.json();
     if(data && data.rates && data.rates.NGN){
       state.settings.exchangeRate = data.rates.NGN;
@@ -558,7 +558,7 @@ async function fetchExchangeRate(){
   }catch(e){
     console.error('exchange rate fetch failed', e);
     if(!state.settings.exchangeRate){
-      state.settings.exchangeRate = 980;
+      state.settings.exchangeRate = 997;
       await saveSettings();
     }
     render();
@@ -712,7 +712,7 @@ function wireStaticButtons(){
     openModal(`
       <h3>Rate, tax &amp; exchange</h3>
       <div class="field">
-        <label>Your hourly rate (USD)</label>
+        <label>Your hourly rate (CAD)</label>
         <input type="number" id="modalRate" value="${s.rate}" step="0.01" min="0">
       </div>
       <div class="field">
@@ -720,7 +720,7 @@ function wireStaticButtons(){
         <input type="number" id="modalTax" value="${s.taxPercent}" min="0" max="100">
       </div>
       <div class="field">
-        <label>USD → NGN exchange rate</label>
+        <label>CAD → NGN exchange rate</label>
         <input type="number" id="modalFx" value="${s.exchangeRate ? s.exchangeRate.toFixed(2) : ''}" step="0.01" min="0">
         <div class="fx-note">Leave as-is to keep using the live rate. Edit it to lock a manual rate.</div>
       </div>
@@ -785,7 +785,7 @@ function renderMain(){
     </div>
 
     <div class="fx-bar">
-      <span>1 USD → ₦</span>
+      <span>1 CAD → ₦</span>
       <input type="number" id="fxQuickInput" step="0.01" min="0" value="${state.settings.exchangeRate ? state.settings.exchangeRate.toFixed(2) : ''}">
       <span class="fx-tag">${state.settings.exchangeManual ? 'manual' : 'live'}</span>
       ${state.settings.exchangeManual ? `<button class="fx-live-btn" id="fxUseLiveBtn">Use live rate</button>` : ''}
@@ -799,15 +799,15 @@ function renderMain(){
         </div>
         <div class="receipt-item">
           <div class="label">Gross earned</div>
-          <div class="value">${fmtUSD(totals.gross)}</div>
+          <div class="value">${fmtCAD(totals.gross)}</div>
         </div>
         <div class="receipt-item deduction">
           <div class="label">Tax (${state.settings.taxPercent}%)</div>
-          <div class="value">-${fmtUSD(totals.tax)}</div>
+          <div class="value">-${fmtCAD(totals.tax)}</div>
         </div>
         <div class="receipt-item highlight">
           <div class="label">Worker pay</div>
-          <div class="value">${fmtUSD(totals.workerPay)}</div>
+          <div class="value">${fmtCAD(totals.workerPay)}</div>
         </div>
         <div class="receipt-item highlight">
           <div class="label">Worker pay (₦)</div>
@@ -817,7 +817,7 @@ function renderMain(){
       <hr class="receipt-divider">
       <div class="receipt-item">
         <div class="label">Your take (after tax &amp; worker pay)</div>
-        <div class="value">${fmtUSD(totals.myTake)}</div>
+        <div class="value">${fmtCAD(totals.myTake)}</div>
       </div>
     </div>
 
@@ -836,8 +836,8 @@ function renderMain(){
               <td>${e.date}</td>
               <td>${fmtTimeRange(e.startTime, e.endTime)}</td>
               <td>${e.hours.toFixed(2)}</td>
-              <td>${fmtUSD(c.gross)}</td>
-              <td>${fmtUSD(c.workerPay)}</td>
+              <td>${fmtCAD(c.gross)}</td>
+              <td>${fmtCAD(c.workerPay)}</td>
               <td>${fmtNGN(c.workerPayNGN)}</td>
               <td class="note-col">${escapeHtml(e.note || '')}</td>
               <td><button class="del-btn" data-id="${e.id}">Delete</button></td>
@@ -1010,8 +1010,8 @@ function paintWorkerSummary(){
               <div class="value">${w.totalHours.toFixed(1)}</div>
             </div>
             <div class="receipt-item highlight">
-              <div class="label">Earned (USD)</div>
-              <div class="value">${fmtUSD(w.workerPay)}</div>
+              <div class="label">Earned (CAD)</div>
+              <div class="value">${fmtCAD(w.workerPay)}</div>
             </div>
             <div class="receipt-item highlight">
               <div class="label">Earned (₦)</div>
@@ -1023,13 +1023,13 @@ function paintWorkerSummary(){
         <div class="entries-card">
           ${w.entries.length ? `
           <table>
-            <thead><tr><th>Date</th><th>Time</th><th>Hours</th><th>Earned (USD)</th><th>Earned (₦)</th></tr></thead>
+            <thead><tr><th>Date</th><th>Time</th><th>Hours</th><th>Earned (CAD)</th><th>Earned (₦)</th></tr></thead>
             <tbody>
               ${w.entries.map(e => `<tr>
                 <td>${e.date}</td>
                 <td>${fmtTimeRange(e.startTime, e.endTime)}</td>
                 <td>${e.hours.toFixed(2)}</td>
-                <td>${fmtUSD(e.workerPay)}</td>
+                <td>${fmtCAD(e.workerPay)}</td>
                 <td>${fmtNGN(e.workerPayNGN)}</td>
               </tr>`).join('')}
             </tbody>
