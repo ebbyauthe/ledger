@@ -63,6 +63,9 @@ export async function migrate() {
   if (!entryCols.includes('paid')) {
     await db.execute('ALTER TABLE entries ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
   }
+  if (!entryCols.includes('payment_source')) {
+    await db.execute('ALTER TABLE entries ADD COLUMN payment_source TEXT');
+  }
 
   await db.execute(`
     INSERT OR IGNORE INTO settings (id, rate, tax_percent, exchange_rate, exchange_manual)

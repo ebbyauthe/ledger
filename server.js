@@ -117,6 +117,7 @@ function mapEntry(row) {
     hours: row.hours,
     note: row.note || '',
     paid: !!row.paid,
+    paymentSource: row.payment_source || null,
   };
 }
 
@@ -283,24 +284,27 @@ app.delete('/api/admin/entries/:workerId/:entryId', requireAdmin, async (req, re
 
 app.put('/api/admin/entries/:workerId/:entryId/paid', requireAdmin, async (req, res) => {
   const { workerId, entryId } = req.params;
-  const { paid } = req.body || {};
+  const { paid, paymentSource } = req.body || {};
   const existing = (await db.execute({
     sql: 'SELECT * FROM entries WHERE id = ? AND worker_id = ?',
     args: [entryId, workerId],
   })).rows[0];
   if (!existing) return res.status(404).json({ error: 'not found' });
+  const source = paid && (paymentSource === 'personal' || paymentSource === 'official') ? paymentSource : null;
   await db.execute({
-    sql: 'UPDATE entries SET paid = ? WHERE id = ? AND worker_id = ?',
-    args: [paid ? 1 : 0, entryId, workerId],
+    sql: 'UPDATE entries SET paid = ?, payment_source = ? WHERE id = ? AND worker_id = ?',
+    args: [paid ? 1 : 0, source, entryId, workerId],
   });
-  res.json(mapEntry({ ...existing, paid: paid ? 1 : 0 }));
+  res.json(mapEntry({ ...existing, paid: paid ? 1 : 0, payment_source: source }));
 });
 
 app.post('/api/admin/entries/:workerId/mark-all-paid', requireAdmin, async (req, res) => {
   const { workerId } = req.params;
+  const { paymentSource } = req.body || {};
+  const source = paymentSource === 'personal' || paymentSource === 'official' ? paymentSource : null;
   await db.execute({
-    sql: 'UPDATE entries SET paid = 1 WHERE worker_id = ? AND paid = 0',
-    args: [workerId],
+    sql: 'UPDATE entries SET paid = 1, payment_source = ? WHERE worker_id = ? AND paid = 0',
+    args: [source, workerId],
   });
   res.json({ ok: true });
 });

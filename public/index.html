@@ -515,11 +515,12 @@ function calcWorkerTotals(workerId){
   const sharePct = worker ? worker.sharePercent : SHARE_DEFAULT;
   const fx = state.settings.exchangeRate || 0;
 
-  let totalHours = 0, gross = 0, unpaidHours = 0;
+  let totalHours = 0, gross = 0, unpaidHours = 0, personalHours = 0;
   list.forEach(e => {
     totalHours += e.hours;
     gross += e.hours * rate;
     if(!e.paid) unpaidHours += e.hours;
+    if(e.paid && e.paymentSource === 'personal') personalHours += e.hours;
   });
   const tax = gross * taxPct / 100;
   const workerPay = gross * sharePct / 100;
@@ -530,12 +531,16 @@ function calcWorkerTotals(workerId){
   const unpaidWorkerPay = unpaidGross * sharePct / 100;
   const unpaidWorkerPayNGN = unpaidWorkerPay * fx;
 
-  return { totalHours, gross, tax, workerPay, myTake, workerPayNGN, unpaidWorkerPay, unpaidWorkerPayNGN };
+  const personalGross = personalHours * rate;
+  const personalAdvance = personalGross * sharePct / 100;
+  const personalAdvanceNGN = personalAdvance * fx;
+
+  return { totalHours, gross, tax, workerPay, myTake, workerPayNGN, unpaidWorkerPay, unpaidWorkerPayNGN, personalAdvance, personalAdvanceNGN };
 }
 
 function calcAllWorkersTotals(){
   const fx = state.settings.exchangeRate || 0;
-  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, myTake = 0, unpaidWorkerPay = 0;
+  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, myTake = 0, unpaidWorkerPay = 0, personalAdvance = 0;
   const perWorker = state.workers.map(w => {
     const t = calcWorkerTotals(w.id);
     totalHours += t.totalHours;
@@ -544,11 +549,12 @@ function calcAllWorkersTotals(){
     workerPay += t.workerPay;
     myTake += t.myTake;
     unpaidWorkerPay += t.unpaidWorkerPay;
+    personalAdvance += t.personalAdvance;
     return { worker: w, totals: t };
   });
   return {
-    totalHours, gross, tax, workerPay, myTake, unpaidWorkerPay,
-    workerPayNGN: workerPay * fx, unpaidWorkerPayNGN: unpaidWorkerPay * fx,
+    totalHours, gross, tax, workerPay, myTake, unpaidWorkerPay, personalAdvance,
+    workerPayNGN: workerPay * fx, unpaidWorkerPayNGN: unpaidWorkerPay * fx, personalAdvanceNGN: personalAdvance * fx,
     perWorker,
   };
 }
@@ -616,17 +622,17 @@ async function deleteEntryAdmin(workerId, entryId){
   state.entries[workerId] = (state.entries[workerId] || []).filter(e => e.id !== entryId);
 }
 
-async function setEntryPaid(workerId, entryId, paid){
-  const updated = await api(`/api/admin/entries/${workerId}/${entryId}/paid`, { method: 'PUT', body: { paid } });
+async function setEntryPaid(workerId, entryId, paid, paymentSource){
+  const updated = await api(`/api/admin/entries/${workerId}/${entryId}/paid`, { method: 'PUT', body: { paid, paymentSource } });
   const list = state.entries[workerId] || [];
   const idx = list.findIndex(e => e.id === entryId);
   if(idx !== -1) list[idx] = updated;
 }
 
-async function markAllPaid(workerId){
-  await api(`/api/admin/entries/${workerId}/mark-all-paid`, { method: 'POST' });
+async function markAllPaid(workerId, paymentSource){
+  await api(`/api/admin/entries/${workerId}/mark-all-paid`, { method: 'POST', body: { paymentSource } });
   const list = state.entries[workerId] || [];
-  list.forEach(e => { e.paid = true; });
+  list.forEach(e => { e.paid = true; e.paymentSource = paymentSource; });
 }
 
 async function deleteWorker(workerId, password){
@@ -879,6 +885,10 @@ function renderMain(){
         <div class="label">Still owed to worker</div>
         <div class="value">${fmtCAD(totals.unpaidWorkerPay)} · ${fmtNGN(totals.unpaidWorkerPayNGN)}</div>
       </div>
+      <div class="receipt-item deduction">
+        <div class="label">Owed back to you (paid from personal funds)</div>
+        <div class="value">${fmtCAD(totals.personalAdvance)} · ${fmtNGN(totals.personalAdvanceNGN)}</div>
+      </div>
     </div>
 
     <div class="entries-card">
@@ -899,14 +909,21 @@ function renderMain(){
               <td>${fmtCAD(c.workerPay)}</td>
               <td>${fmtNGN(c.workerPayNGN)}</td>
               <td class="note-col">${escapeHtml(e.note || '')}</td>
-              <td><input type="checkbox" class="paid-check" data-id="${e.id}" ${e.paid ? 'checked' : ''}></td>
+              <td>
+                <select class="paid-select" data-id="${e.id}">
+                  <option value="unpaid" ${!e.paid ? 'selected' : ''}>Unpaid</option>
+                  <option value="personal" ${e.paid && e.paymentSource === 'personal' ? 'selected' : ''}>Paid (personal)</option>
+                  <option value="official" ${e.paid && e.paymentSource === 'official' ? 'selected' : ''}>Paid (official)</option>
+                </select>
+              </td>
               <td><button class="del-btn" data-id="${e.id}">Delete</button></td>
             </tr>`;
           }).join('')}
         </tbody>
       </table>
       <div class="add-entry-row">
-        <button class="settings-toggle" id="markAllPaidBtn">Mark all as paid</button>
+        <button class="settings-toggle" id="markAllPaidPersonalBtn">Mark all as paid (personal funds)</button>
+        <button class="settings-toggle" id="markAllPaidOfficialBtn">Mark all as paid (official)</button>
       </div>
       ` : `<div class="empty-entries">No hours logged yet. Add the first entry below.</div>`}
       <div class="add-entry-row">
@@ -1003,24 +1020,38 @@ function renderMain(){
     };
   });
 
-  main.querySelectorAll('.paid-check').forEach(cb => {
-    cb.onchange = async () => {
-      const id = cb.dataset.id;
+  main.querySelectorAll('.paid-select').forEach(sel => {
+    const prevValue = sel.value;
+    sel.onchange = async () => {
+      const id = sel.dataset.id;
+      const paid = sel.value !== 'unpaid';
+      const paymentSource = paid ? sel.value : undefined;
       try{
-        await setEntryPaid(worker.id, id, cb.checked);
+        await setEntryPaid(worker.id, id, paid, paymentSource);
         render();
       }catch(e){
         alert('Could not update paid status: ' + e.message);
-        cb.checked = !cb.checked;
+        sel.value = prevValue;
       }
     };
   });
 
-  const markAllPaidBtn = document.getElementById('markAllPaidBtn');
-  if(markAllPaidBtn){
-    markAllPaidBtn.onclick = async () => {
+  const markAllPaidPersonalBtn = document.getElementById('markAllPaidPersonalBtn');
+  if(markAllPaidPersonalBtn){
+    markAllPaidPersonalBtn.onclick = async () => {
       try{
-        await markAllPaid(worker.id);
+        await markAllPaid(worker.id, 'personal');
+        render();
+      }catch(e){
+        alert('Could not mark entries as paid: ' + e.message);
+      }
+    };
+  }
+  const markAllPaidOfficialBtn = document.getElementById('markAllPaidOfficialBtn');
+  if(markAllPaidOfficialBtn){
+    markAllPaidOfficialBtn.onclick = async () => {
+      try{
+        await markAllPaid(worker.id, 'official');
         render();
       }catch(e){
         alert('Could not mark entries as paid: ' + e.message);
@@ -1073,6 +1104,10 @@ function renderOverviewMain(main){
         <div class="label">Still owed across all workers</div>
         <div class="value">${fmtCAD(totals.unpaidWorkerPay)} · ${fmtNGN(totals.unpaidWorkerPayNGN)}</div>
       </div>
+      <div class="receipt-item deduction">
+        <div class="label">Owed back to you (paid from personal funds)</div>
+        <div class="value">${fmtCAD(totals.personalAdvance)} · ${fmtNGN(totals.personalAdvanceNGN)}</div>
+      </div>
     </div>
 
     <div class="entries-card">
@@ -1080,7 +1115,7 @@ function renderOverviewMain(main){
       <table>
         <thead>
           <tr>
-            <th>Worker</th><th>Hours</th><th>Gross</th><th>Worker pay</th><th>Still owed</th>
+            <th>Worker</th><th>Hours</th><th>Gross</th><th>Worker pay</th><th>Still owed</th><th>Owed back to you</th>
           </tr>
         </thead>
         <tbody>
@@ -1090,6 +1125,7 @@ function renderOverviewMain(main){
             <td>${fmtCAD(r.totals.gross)}</td>
             <td>${fmtCAD(r.totals.workerPay)}</td>
             <td>${fmtCAD(r.totals.unpaidWorkerPay)}</td>
+            <td>${fmtCAD(r.totals.personalAdvance)}</td>
           </tr>`).join('')}
         </tbody>
       </table>` : `<div class="empty-entries">No workers added yet.</div>`}
