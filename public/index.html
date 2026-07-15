@@ -512,11 +512,20 @@ function fmtElapsedLive(ms){
   const s = totalSec % 60;
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
-function fmtClock(ts){
-  return new Date(ts).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+const TZ_QC = 'America/Toronto';
+const TZ_NG = 'Africa/Lagos';
+function fmtClockTZ(ts, tz){
+  return new Date(ts).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', timeZone: tz });
 }
-function fmtDay(ts){
-  return new Date(ts).toLocaleDateString(undefined, { month:'short', day:'numeric' });
+function fmtDayTZ(ts, tz){
+  return new Date(ts).toLocaleDateString('en-US', { month:'short', day:'numeric', timeZone: tz });
+}
+function fmtClockBoth(ts){
+  return `${fmtClockTZ(ts, TZ_QC)} QC · ${fmtClockTZ(ts, TZ_NG)} NG`;
+}
+// Two-line cell: the date (Quebec-anchored) on top, both zones' clock time below.
+function fmtWhenCell(ts){
+  return `<div>${fmtDayTZ(ts, TZ_QC)}</div><div>${fmtClockBoth(ts)}</div>`;
 }
 function clearWorkerTimerTick(){
   if(workerTimerTickHandle) clearInterval(workerTimerTickHandle);
@@ -989,12 +998,11 @@ function renderMain(){
       </div>
       ${timerSessions.length ? `
       <table>
-        <thead><tr><th>Date</th><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th></th></tr></thead>
+        <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th></th></tr></thead>
         <tbody>
           ${timerSessions.map(t => `<tr>
-            <td>${fmtDay(t.startedAt)}</td>
-            <td>${fmtClock(t.startedAt)}</td>
-            <td>${t.endedAt ? fmtClock(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
+            <td>${fmtWhenCell(t.startedAt)}</td>
+            <td>${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
             <td>${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
             <td class="note-col">${escapeHtml(t.note || '')}</td>
             <td>
@@ -1247,8 +1255,8 @@ function renderOverviewMain(main){
         <tbody>
           ${timerRows.map(r => `<tr>
             <td>${escapeHtml(r.worker.name)}</td>
-            <td>${r.running ? `<span class="timer-running-tag">🟢 Running since ${fmtClock(r.running.startedAt)}</span>` : '—'}</td>
-            <td>${r.last ? `${fmtDay(r.last.startedAt)} · ${fmtClock(r.last.startedAt)}–${r.last.endedAt ? fmtClock(r.last.endedAt) : 'running'} (${fmtDuration((r.last.endedAt || Date.now()) - r.last.startedAt)})` : '—'}</td>
+            <td>${r.running ? `<span class="timer-running-tag">🟢 Running since ${fmtClockBoth(r.running.startedAt)}</span>` : '—'}</td>
+            <td>${r.last ? `${fmtDayTZ(r.last.startedAt, TZ_QC)} · ${fmtClockBoth(r.last.startedAt)} · ${fmtDuration((r.last.endedAt || Date.now()) - r.last.startedAt)}${r.last.endedAt ? '' : ' (running)'}` : '—'}</td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -1437,12 +1445,11 @@ function paintWorkerSummary(){
           <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">Your timer sessions</div>
           ${w.timerSessions.length ? `
           <table>
-            <thead><tr><th>Date</th><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th></tr></thead>
+            <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th></tr></thead>
             <tbody>
               ${w.timerSessions.map(t => `<tr>
-                <td>${fmtDay(t.startedAt)}</td>
-                <td>${fmtClock(t.startedAt)}</td>
-                <td>${t.endedAt ? fmtClock(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
+                <td>${fmtWhenCell(t.startedAt)}</td>
+                <td>${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
                 <td class="timer-row-duration" data-started="${t.startedAt}" data-ended="${t.endedAt || ''}">${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
                 <td class="note-col">${escapeHtml(t.note || '')}</td>
               </tr>`).join('')}
