@@ -513,6 +513,7 @@ function fmtElapsedLive(ms){
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 const TZ_QC = 'America/Toronto';
+const TZ_AB = 'America/Edmonton';
 const TZ_NG = 'Africa/Lagos';
 function fmtClockTZ(ts, tz){
   return new Date(ts).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', timeZone: tz });
@@ -521,9 +522,9 @@ function fmtDayTZ(ts, tz){
   return new Date(ts).toLocaleDateString('en-US', { month:'short', day:'numeric', timeZone: tz });
 }
 function fmtClockBoth(ts){
-  return `${fmtClockTZ(ts, TZ_QC)} QC · ${fmtClockTZ(ts, TZ_NG)} NG`;
+  return `${fmtClockTZ(ts, TZ_QC)} QC · ${fmtClockTZ(ts, TZ_AB)} AB · ${fmtClockTZ(ts, TZ_NG)} NG`;
 }
-// Two-line cell: the date (Quebec-anchored) on top, both zones' clock time below.
+// Two-line cell: the date (Quebec-anchored) on top, all three zones' clock time below.
 function fmtWhenCell(ts){
   return `<div>${fmtDayTZ(ts, TZ_QC)}</div><div>${fmtClockBoth(ts)}</div>`;
 }
