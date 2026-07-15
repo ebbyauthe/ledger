@@ -149,6 +149,14 @@ function mapEntry(row) {
     paymentSource: row.payment_source || null,
   };
 }
+function mapTimerSession(row) {
+  return {
+    id: row.id,
+    startedAt: row.started_at,
+    endedAt: row.ended_at ?? null,
+    note: row.note || '',
+  };
+}
 
 async function addEntry(workerId, { date, hours, note }) {
   const worker = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ?', args: [workerId] })).rows[0];
@@ -202,6 +210,7 @@ app.get('/api/admin/state', requireAdmin, async (req, res) => {
   const settingsRow = (await db.execute('SELECT * FROM settings WHERE id = 1')).rows[0];
   const workerRows = (await db.execute('SELECT * FROM workers ORDER BY created_at ASC')).rows;
   const entryRows = (await db.execute('SELECT * FROM entries ORDER BY date DESC')).rows;
+  const timerRows = (await db.execute('SELECT * FROM timer_sessions ORDER BY started_at DESC')).rows;
 
   const entries = {};
   for (const row of entryRows) {
@@ -209,10 +218,17 @@ app.get('/api/admin/state', requireAdmin, async (req, res) => {
     entries[row.worker_id].push(mapEntry(row));
   }
 
+  const timers = {};
+  for (const row of timerRows) {
+    if (!timers[row.worker_id]) timers[row.worker_id] = [];
+    timers[row.worker_id].push(mapTimerSession(row));
+  }
+
   res.json({
     settings: mapSettings(settingsRow),
     workers: workerRows.map(mapWorker),
     entries,
+    timers,
   });
 });
 
@@ -287,6 +303,7 @@ app.delete('/api/admin/workers/:id', requireAdmin, async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'not found' });
   await db.execute({ sql: 'DELETE FROM entries WHERE worker_id = ?', args: [id] });
   await db.execute({ sql: 'DELETE FROM worker_sessions WHERE worker_id = ?', args: [id] });
+  await db.execute({ sql: 'DELETE FROM timer_sessions WHERE worker_id = ?', args: [id] });
   await db.execute({ sql: 'DELETE FROM workers WHERE id = ?', args: [id] });
   res.json({ ok: true });
 });
@@ -334,6 +351,30 @@ app.post('/api/admin/entries/:workerId/mark-all-paid', requireAdmin, async (req,
   await db.execute({
     sql: 'UPDATE entries SET paid = 1, payment_source = ? WHERE worker_id = ? AND paid = 0',
     args: [source, workerId],
+  });
+  res.json({ ok: true });
+});
+
+// Admin can force-stop a timer a worker forgot to stop, or delete a bad session.
+// Workers themselves cannot edit or delete their own timer sessions.
+app.post('/api/admin/timers/:workerId/:sessionId/stop', requireAdmin, async (req, res) => {
+  const { workerId, sessionId } = req.params;
+  const existing = (await db.execute({
+    sql: 'SELECT * FROM timer_sessions WHERE id = ? AND worker_id = ?',
+    args: [sessionId, workerId],
+  })).rows[0];
+  if (!existing) return res.status(404).json({ error: 'not found' });
+  if (existing.ended_at) return res.json(mapTimerSession(existing));
+  const endedAt = Date.now();
+  await db.execute({ sql: 'UPDATE timer_sessions SET ended_at = ? WHERE id = ?', args: [endedAt, sessionId] });
+  res.json(mapTimerSession({ ...existing, ended_at: endedAt }));
+});
+
+app.delete('/api/admin/timers/:workerId/:sessionId', requireAdmin, async (req, res) => {
+  const { workerId, sessionId } = req.params;
+  await db.execute({
+    sql: 'DELETE FROM timer_sessions WHERE id = ? AND worker_id = ?',
+    args: [sessionId, workerId],
   });
   res.json({ ok: true });
 });
@@ -438,6 +479,13 @@ app.get('/api/workers/:id/summary', requireWorkerSession, async (req, res) => {
     return { ...e, workerPay, workerPayNGN: workerPay * fx };
   });
 
+  const timerRows = (await db.execute({
+    sql: 'SELECT * FROM timer_sessions WHERE worker_id = ? ORDER BY started_at DESC',
+    args: [id],
+  })).rows;
+  const timerSessions = timerRows.map(mapTimerSession);
+  const runningTimer = timerSessions.find(t => !t.endedAt) || null;
+
   res.json({
     id: workerRow.id,
     name: workerRow.name,
@@ -447,7 +495,41 @@ app.get('/api/workers/:id/summary', requireWorkerSession, async (req, res) => {
     unpaidWorkerPay,
     unpaidWorkerPayNGN: unpaidWorkerPay * fx,
     entries,
+    timerSessions,
+    runningTimer,
   });
+});
+
+// ---------- Worker-facing timer (start/stop clock) ----------
+// Purely informational: never affects hours, pay, or anything computed above.
+
+app.post('/api/workers/:id/timer/start', requireWorkerSession, async (req, res) => {
+  const { id } = req.params;
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+  const running = (await db.execute({
+    sql: 'SELECT id FROM timer_sessions WHERE worker_id = ? AND ended_at IS NULL',
+    args: [id],
+  })).rows[0];
+  if (running) return res.status(409).json({ error: 'timer already running' });
+  const sessionId = uid();
+  const startedAt = Date.now();
+  await db.execute({
+    sql: 'INSERT INTO timer_sessions (id, worker_id, started_at, note) VALUES (?, ?, ?, ?)',
+    args: [sessionId, id, startedAt, note],
+  });
+  res.status(201).json({ id: sessionId, startedAt, endedAt: null, note });
+});
+
+app.post('/api/workers/:id/timer/stop', requireWorkerSession, async (req, res) => {
+  const { id } = req.params;
+  const running = (await db.execute({
+    sql: 'SELECT * FROM timer_sessions WHERE worker_id = ? AND ended_at IS NULL',
+    args: [id],
+  })).rows[0];
+  if (!running) return res.status(404).json({ error: 'no timer running' });
+  const endedAt = Date.now();
+  await db.execute({ sql: 'UPDATE timer_sessions SET ended_at = ? WHERE id = ?', args: [endedAt, running.id] });
+  res.json(mapTimerSession({ ...running, ended_at: endedAt }));
 });
 
 // ---------- App shell ----------

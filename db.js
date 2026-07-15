@@ -52,6 +52,17 @@ export async function migrate() {
     )
   `);
 
+  // Self-service start/stop clock, purely informational — never feeds into paid hours or pay math.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS timer_sessions (
+      id TEXT PRIMARY KEY,
+      worker_id TEXT NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      note TEXT
+    )
+  `);
+
   const workerCols = (await db.execute('PRAGMA table_info(workers)')).rows.map(r => r.name);
   if (!workerCols.includes('password_hash')) {
     await db.execute('ALTER TABLE workers ADD COLUMN password_hash TEXT');

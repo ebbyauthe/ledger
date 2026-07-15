@@ -243,6 +243,23 @@
     font-size: 12px;
   }
   .del-btn:hover{ color: var(--rust); }
+  .timer-del-btn{
+    background:none; border:none; cursor:pointer;
+    color: var(--ink-soft);
+    font-family:'Inter', sans-serif;
+    font-size: 12px;
+  }
+  .timer-del-btn:hover{ color: var(--rust); }
+  .timer-note-input{
+    flex:1;
+    min-width: 140px;
+    padding: 9px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    font-family:'Inter', sans-serif;
+    font-size: 13px;
+  }
+  .timer-running-tag{ color: var(--accent); font-weight:600; }
 
   .add-entry-row{
     display:flex;
@@ -467,7 +484,7 @@ const SHARE_DEFAULT = 50;
 const mode = location.pathname.replace(/\/+$/, '') === '/admin' ? 'admin' : 'worker';
 const OVERVIEW_ID = '__overview__';
 
-let state = { settings: { rate: RATE_DEFAULT, taxPercent: TAX_DEFAULT, exchangeRate: null, exchangeManual: false }, workers: [], entries: {} };
+let state = { settings: { rate: RATE_DEFAULT, taxPercent: TAX_DEFAULT, exchangeRate: null, exchangeManual: false }, workers: [], entries: {}, timers: {} };
 let selectedWorkerId = null;
 let adminAuthenticated = false;
 let modalOpen = false;
@@ -476,9 +493,35 @@ let pollTimer = null;
 let workerNames = [];
 let workerViewSelectedId = null;
 let workerSummary = null;
+let workerTimerTickHandle = null;
 
 const fmtCAD = n => 'CA$' + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
 const fmtNGN = n => '₦' + n.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
+function fmtDuration(ms){
+  if(!ms || ms < 0) ms = 0;
+  const totalMin = Math.floor(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}h ${String(m).padStart(2,'0')}m`;
+}
+function fmtElapsedLive(ms){
+  if(!ms || ms < 0) ms = 0;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function fmtClock(ts){
+  return new Date(ts).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+}
+function fmtDay(ts){
+  return new Date(ts).toLocaleDateString(undefined, { month:'short', day:'numeric' });
+}
+function clearWorkerTimerTick(){
+  if(workerTimerTickHandle) clearInterval(workerTimerTickHandle);
+  workerTimerTickHandle = null;
+}
 function escapeHtml(str){
   const div = document.createElement('div');
   div.textContent = str;
@@ -557,6 +600,10 @@ function calcAllWorkersTotals(){
     workerPayNGN: workerPay * fx, unpaidWorkerPayNGN: unpaidWorkerPay * fx, personalAdvanceNGN: personalAdvance * fx,
     perWorker,
   };
+}
+
+function isWorkerClockedIn(workerId){
+  return (state.timers[workerId] || []).some(t => !t.endedAt);
 }
 
 function calcEntryRow(hours, sharePct){
@@ -807,9 +854,10 @@ function renderSidebar(){
 
   state.workers.forEach(w => {
     const totals = calcWorkerTotals(w.id);
+    const clockedIn = isWorkerClockedIn(w.id);
     const li = document.createElement('li');
     li.className = w.id === selectedWorkerId ? 'active' : '';
-    li.innerHTML = `<span>${escapeHtml(w.name)}</span><span class="hrs">${totals.totalHours.toFixed(1)}h</span>`;
+    li.innerHTML = `<span>${clockedIn ? '🟢 ' : ''}${escapeHtml(w.name)}</span><span class="hrs">${totals.totalHours.toFixed(1)}h</span>`;
     li.onclick = () => { selectedWorkerId = w.id; render(); };
     ul.appendChild(li);
   });
@@ -832,6 +880,7 @@ function renderMain(){
 
   const totals = calcWorkerTotals(worker.id);
   const entries = (state.entries[worker.id] || []).slice().sort((a,b) => b.date.localeCompare(a.date));
+  const timerSessions = (state.timers[worker.id] || []).slice().sort((a,b) => b.startedAt - a.startedAt);
   main.innerHTML = `
     <div class="worker-header">
       <div>
@@ -932,6 +981,30 @@ function renderMain(){
         <input type="text" name="note" id="entryNote" placeholder="Note (optional)">
         <button class="btn-primary" id="addEntryBtn">Add entry</button>
       </div>
+    </div>
+
+    <div class="entries-card" style="margin-top:16px;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">
+        Timer log <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— self-reported by ${escapeHtml(worker.name)}, informational only, doesn't affect hours or pay</span>
+      </div>
+      ${timerSessions.length ? `
+      <table>
+        <thead><tr><th>Date</th><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th></th></tr></thead>
+        <tbody>
+          ${timerSessions.map(t => `<tr>
+            <td>${fmtDay(t.startedAt)}</td>
+            <td>${fmtClock(t.startedAt)}</td>
+            <td>${t.endedAt ? fmtClock(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
+            <td>${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
+            <td class="note-col">${escapeHtml(t.note || '')}</td>
+            <td>
+              ${!t.endedAt ? `<button class="settings-toggle timer-stop-btn" data-id="${t.id}">Stop</button>` : ''}
+              <button class="timer-del-btn" data-id="${t.id}">Delete</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      ` : `<div class="empty-entries">No timer sessions logged yet.</div>`}
     </div>
   `;
 
@@ -1058,11 +1131,44 @@ function renderMain(){
       }
     };
   }
+
+  main.querySelectorAll('.timer-stop-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const sessionId = btn.dataset.id;
+      try{
+        const updated = await api(`/api/admin/timers/${worker.id}/${sessionId}/stop`, { method: 'POST' });
+        const list = state.timers[worker.id] || [];
+        const idx = list.findIndex(t => t.id === sessionId);
+        if(idx !== -1) list[idx] = updated;
+        render();
+      }catch(e){
+        alert('Could not stop timer: ' + e.message);
+      }
+    };
+  });
+
+  main.querySelectorAll('.timer-del-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const sessionId = btn.dataset.id;
+      if(!confirm('Delete this timer session? This cannot be undone.')) return;
+      try{
+        await api(`/api/admin/timers/${worker.id}/${sessionId}`, { method: 'DELETE' });
+        state.timers[worker.id] = (state.timers[worker.id] || []).filter(t => t.id !== sessionId);
+        render();
+      }catch(e){
+        alert('Could not delete timer session: ' + e.message);
+      }
+    };
+  });
 }
 
 function renderOverviewMain(main){
   const totals = calcAllWorkersTotals();
   const rows = totals.perWorker.slice().sort((a,b) => b.totals.gross - a.totals.gross);
+  const timerRows = state.workers.map(w => {
+    const sessions = (state.timers[w.id] || []).slice().sort((a,b) => b.startedAt - a.startedAt);
+    return { worker: w, running: sessions.find(t => !t.endedAt) || null, last: sessions[0] || null };
+  }).filter(r => r.running || r.last);
 
   main.innerHTML = `
     <div class="worker-header">
@@ -1130,6 +1236,24 @@ function renderOverviewMain(main){
         </tbody>
       </table>` : `<div class="empty-entries">No workers added yet.</div>`}
     </div>
+
+    <div class="entries-card" style="margin-top:16px;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">
+        Timer activity <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— self-reported, informational only, doesn't affect hours or pay</span>
+      </div>
+      ${timerRows.length ? `
+      <table>
+        <thead><tr><th>Worker</th><th>Status</th><th>Last session</th></tr></thead>
+        <tbody>
+          ${timerRows.map(r => `<tr>
+            <td>${escapeHtml(r.worker.name)}</td>
+            <td>${r.running ? `<span class="timer-running-tag">🟢 Running since ${fmtClock(r.running.startedAt)}</span>` : '—'}</td>
+            <td>${r.last ? `${fmtDay(r.last.startedAt)} · ${fmtClock(r.last.startedAt)}–${r.last.endedAt ? fmtClock(r.last.endedAt) : 'running'} (${fmtDuration((r.last.endedAt || Date.now()) - r.last.startedAt)})` : '—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      ` : `<div class="empty-entries">No timer activity logged yet.</div>`}
+    </div>
   `;
 }
 
@@ -1179,6 +1303,7 @@ async function renderWorkerPicker(){
 }
 
 function paintWorkerPicker(){
+  clearWorkerTimerTick();
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="worker-view-wrap">
@@ -1252,6 +1377,25 @@ function paintWorkerSummary(){
         <p class="wv-sub">Your hours and earnings</p>
 
         <div class="receipt">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
+            <div>
+              <div class="label">Timer</div>
+              <div class="value" id="timerElapsedValue">${w.runningTimer ? fmtElapsedLive(Date.now() - w.runningTimer.startedAt) : '—'}</div>
+            </div>
+            ${w.runningTimer ? `
+              <button class="btn-primary" id="timerStopBtn" style="background:var(--rust);">Stop timer</button>
+            ` : `
+              <div style="display:flex;gap:8px;align-items:center;flex:1;min-width:200px;">
+                <input type="text" id="timerNoteInput" class="timer-note-input" placeholder="What are you working on? (optional)">
+                <button class="btn-primary" id="timerStartBtn">Start timer</button>
+              </div>
+            `}
+          </div>
+          ${w.runningTimer && w.runningTimer.note ? `<div class="fx-note">${escapeHtml(w.runningTimer.note)}</div>` : ''}
+          <p class="fx-note" style="margin-top:8px;">This timer is just a log for Ebenezer — it doesn't add to your logged hours or pay.</p>
+        </div>
+
+        <div class="receipt">
           <div class="receipt-grid wv-grid">
             <div class="receipt-item">
               <div class="label">Hours logged</div>
@@ -1288,15 +1432,72 @@ function paintWorkerSummary(){
             </tbody>
           </table>` : `<div class="empty-entries">No hours logged yet.</div>`}
         </div>
+
+        <div class="entries-card" style="margin-top:16px;">
+          <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">Your timer sessions</div>
+          ${w.timerSessions.length ? `
+          <table>
+            <thead><tr><th>Date</th><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th></tr></thead>
+            <tbody>
+              ${w.timerSessions.map(t => `<tr>
+                <td>${fmtDay(t.startedAt)}</td>
+                <td>${fmtClock(t.startedAt)}</td>
+                <td>${t.endedAt ? fmtClock(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
+                <td class="timer-row-duration" data-started="${t.startedAt}" data-ended="${t.endedAt || ''}">${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
+                <td class="note-col">${escapeHtml(t.note || '')}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+          ` : `<div class="empty-entries">No timer sessions yet. Use the button above to start one.</div>`}
+        </div>
       </div>
     </div>
   `;
   document.getElementById('wvSwitch').onclick = async () => {
+    clearWorkerTimerTick();
     try{ await api('/api/workers/logout', { method: 'POST' }); }catch(e){}
     workerViewSelectedId = null;
     workerSummary = null;
     renderWorkerPicker();
   };
+  const timerStartBtn = document.getElementById('timerStartBtn');
+  if(timerStartBtn){
+    timerStartBtn.onclick = async () => {
+      const note = document.getElementById('timerNoteInput').value.trim();
+      timerStartBtn.disabled = true;
+      try{
+        await api(`/api/workers/${w.id}/timer/start`, { method: 'POST', body: { note } });
+        await loadWorkerSummary();
+      }catch(e){
+        alert('Could not start timer: ' + e.message);
+        timerStartBtn.disabled = false;
+      }
+    };
+  }
+  const timerStopBtn = document.getElementById('timerStopBtn');
+  if(timerStopBtn){
+    timerStopBtn.onclick = async () => {
+      timerStopBtn.disabled = true;
+      try{
+        await api(`/api/workers/${w.id}/timer/stop`, { method: 'POST' });
+        await loadWorkerSummary();
+      }catch(e){
+        alert('Could not stop timer: ' + e.message);
+        timerStopBtn.disabled = false;
+      }
+    };
+  }
+  clearWorkerTimerTick();
+  if(w.runningTimer){
+    const startedAt = w.runningTimer.startedAt;
+    workerTimerTickHandle = setInterval(() => {
+      const el = document.getElementById('timerElapsedValue');
+      if(el) el.textContent = fmtElapsedLive(Date.now() - startedAt);
+      document.querySelectorAll('.timer-row-duration[data-ended=""]').forEach(td => {
+        td.textContent = fmtDuration(Date.now() - startedAt);
+      });
+    }, 1000);
+  }
   document.getElementById('wvChangePassword').onclick = () => {
     openModal(`
       <h3>Change password</h3>
