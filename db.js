@@ -32,8 +32,6 @@ export async function migrate() {
       id TEXT PRIMARY KEY,
       worker_id TEXT NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
       date TEXT NOT NULL,
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
       hours REAL NOT NULL,
       note TEXT
     )
@@ -65,6 +63,13 @@ export async function migrate() {
   }
   if (!entryCols.includes('payment_source')) {
     await db.execute('ALTER TABLE entries ADD COLUMN payment_source TEXT');
+  }
+  // start_time/end_time were dropped when decimal-hours became the only logging method.
+  if (entryCols.includes('start_time')) {
+    await db.execute('ALTER TABLE entries DROP COLUMN start_time');
+  }
+  if (entryCols.includes('end_time')) {
+    await db.execute('ALTER TABLE entries DROP COLUMN end_time');
   }
 
   await db.execute(`

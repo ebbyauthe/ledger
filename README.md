@@ -53,7 +53,7 @@ not use the CLI — it gives you the same URL and token.)
 
 1. Push this folder to a GitHub repo.
 2. In Vercel, "Add New..." → "Project" → import the repo. Vercel picks up
-   `vercel.json` and the `api/[...path].js` serverless entry point
+   `vercel.json` and the `api/index.js` serverless entry point
    automatically — no build command needed.
 3. Under the project's Environment Variables settings, add:
    - `ADMIN_PASSWORD` — pick something only you know
@@ -91,8 +91,10 @@ admin session.
 
 - `server.js` — Express app: admin auth, all `/api/*` routes, serves
   `public/` locally. Exports the app for serverless use.
-- `api/[...path].js` — Vercel serverless entry point; wraps `server.js`.
-- `vercel.json` — routes `/admin` to the static frontend on Vercel.
+- `api/index.js` — Vercel serverless entry point; wraps `server.js`.
+- `vercel.json` — rewrites every request to `api/index.js` so Express's
+  own routing (static files, `/admin`, `/api/*`) handles it, same as
+  running `server.js` directly.
 - `db.js` — Turso/libSQL client + schema migration.
 - `public/index.html` — the whole frontend (worker view + admin view).
 - `.env.example` — copy to `.env` for local dev.

@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +10,7 @@ import { db, migrate } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const SESSION_COOKIE = 'ledger_admin_session';
@@ -15,20 +18,44 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 const WORKER_SESSION_COOKIE = 'ledger_worker_session';
 const PASSWORD_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'; // no 0/O/1/l/I
 
+// CSP disabled: the frontend is a single inline <script>/<style> page with no build step.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'too many attempts, try again later' },
+});
 
 function uid() {
   return crypto.randomBytes(6).toString('hex');
 }
 
+// Session tokens are hashed before hitting the DB so a leaked DB dump can't be replayed as live cookies.
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+async function maybePruneSessions() {
+  if (Math.random() >= 0.02) return;
+  const now = Date.now();
+  await db.execute({ sql: 'DELETE FROM admin_sessions WHERE expires_at < ?', args: [now] });
+  await db.execute({ sql: 'DELETE FROM worker_sessions WHERE expires_at < ?', args: [now] });
+}
+
 async function isValidSession(req) {
+  await maybePruneSessions();
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return false;
-  const row = (await db.execute({ sql: 'SELECT expires_at FROM admin_sessions WHERE token = ?', args: [token] })).rows[0];
+  const tokenHash = hashToken(token);
+  const row = (await db.execute({ sql: 'SELECT expires_at FROM admin_sessions WHERE token = ?', args: [tokenHash] })).rows[0];
   if (!row || row.expires_at < Date.now()) {
-    if (row) await db.execute({ sql: 'DELETE FROM admin_sessions WHERE token = ?', args: [token] });
+    if (row) await db.execute({ sql: 'DELETE FROM admin_sessions WHERE token = ?', args: [tokenHash] });
     return false;
   }
   return true;
@@ -72,11 +99,13 @@ function verifyPassword(password, stored) {
 }
 
 async function isValidWorkerSession(req, workerId) {
+  await maybePruneSessions();
   const token = req.cookies[WORKER_SESSION_COOKIE];
   if (!token) return false;
-  const row = (await db.execute({ sql: 'SELECT worker_id, expires_at FROM worker_sessions WHERE token = ?', args: [token] })).rows[0];
+  const tokenHash = hashToken(token);
+  const row = (await db.execute({ sql: 'SELECT worker_id, expires_at FROM worker_sessions WHERE token = ?', args: [tokenHash] })).rows[0];
   if (!row || row.expires_at < Date.now()) {
-    if (row) await db.execute({ sql: 'DELETE FROM worker_sessions WHERE token = ?', args: [token] });
+    if (row) await db.execute({ sql: 'DELETE FROM worker_sessions WHERE token = ?', args: [tokenHash] });
     return false;
   }
   return row.worker_id === workerId;
@@ -126,15 +155,15 @@ async function addEntry(workerId, { date, hours, note }) {
   if (!worker) return null;
   const id = uid();
   await db.execute({
-    sql: 'INSERT INTO entries (id, worker_id, date, start_time, end_time, hours, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    args: [id, workerId, date, '', '', hours, note || ''],
+    sql: 'INSERT INTO entries (id, worker_id, date, hours, note) VALUES (?, ?, ?, ?, ?)',
+    args: [id, workerId, date, hours, note || ''],
   });
   return { id, date, hours, note: note || '', paid: false };
 }
 
 // ---------- Admin auth ----------
 
-app.post('/api/admin/login', async (req, res) => {
+app.post('/api/admin/login', loginLimiter, async (req, res) => {
   const { password } = req.body || {};
   if (!ADMIN_PASSWORD) return res.status(500).json({ error: 'admin password not configured on server' });
   if (typeof password !== 'string' || !safeEqual(password, ADMIN_PASSWORD)) {
@@ -145,7 +174,7 @@ app.post('/api/admin/login', async (req, res) => {
   await db.execute({ sql: 'DELETE FROM admin_sessions WHERE expires_at < ?', args: [Date.now()] });
   await db.execute({
     sql: 'INSERT INTO admin_sessions (token, expires_at) VALUES (?, ?)',
-    args: [token, expiresAt],
+    args: [hashToken(token), expiresAt],
   });
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -158,7 +187,7 @@ app.post('/api/admin/login', async (req, res) => {
 
 app.post('/api/admin/logout', async (req, res) => {
   const token = req.cookies[SESSION_COOKIE];
-  if (token) await db.execute({ sql: 'DELETE FROM admin_sessions WHERE token = ?', args: [token] });
+  if (token) await db.execute({ sql: 'DELETE FROM admin_sessions WHERE token = ?', args: [hashToken(token)] });
   res.clearCookie(SESSION_COOKIE);
   res.json({ ok: true });
 });
@@ -325,7 +354,7 @@ app.get('/api/workers/session', async (req, res) => {
   res.json({ workerId: row.worker_id });
 });
 
-app.post('/api/workers/:id/login', async (req, res) => {
+app.post('/api/workers/:id/login', loginLimiter, async (req, res) => {
   const { id } = req.params;
   const { password } = req.body || {};
   const worker = (await db.execute({ sql: 'SELECT password_hash FROM workers WHERE id = ?', args: [id] })).rows[0];
@@ -339,7 +368,7 @@ app.post('/api/workers/:id/login', async (req, res) => {
   await db.execute({ sql: 'DELETE FROM worker_sessions WHERE expires_at < ?', args: [Date.now()] });
   await db.execute({
     sql: 'INSERT INTO worker_sessions (token, worker_id, expires_at) VALUES (?, ?, ?)',
-    args: [token, id, expiresAt],
+    args: [hashToken(token), id, expiresAt],
   });
   res.cookie(WORKER_SESSION_COOKIE, token, {
     httpOnly: true,
@@ -352,7 +381,7 @@ app.post('/api/workers/:id/login', async (req, res) => {
 
 app.post('/api/workers/logout', async (req, res) => {
   const token = req.cookies[WORKER_SESSION_COOKIE];
-  if (token) await db.execute({ sql: 'DELETE FROM worker_sessions WHERE token = ?', args: [token] });
+  if (token) await db.execute({ sql: 'DELETE FROM worker_sessions WHERE token = ?', args: [hashToken(token)] });
   res.clearCookie(WORKER_SESSION_COOKIE);
   res.json({ ok: true });
 });
@@ -371,6 +400,12 @@ app.put('/api/workers/:id/password', requireWorkerSession, async (req, res) => {
   await db.execute({
     sql: 'UPDATE workers SET password_hash = ? WHERE id = ?',
     args: [hashPassword(newPassword), id],
+  });
+  // Keep the session that just made this change alive; revoke every other outstanding session for this worker.
+  const currentTokenHash = hashToken(req.cookies[WORKER_SESSION_COOKIE]);
+  await db.execute({
+    sql: 'DELETE FROM worker_sessions WHERE worker_id = ? AND token != ?',
+    args: [id, currentTokenHash],
   });
   res.json({ ok: true });
 });
