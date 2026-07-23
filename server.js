@@ -539,8 +539,24 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Turso can occasionally be slow/unreachable waking a cold DB (e.g. SQLITE_NOMEM
+// "unable to open db file"); a couple of quick retries rides that out instead of
+// crashing the whole serverless function on a single transient blip.
+async function migrateWithRetry(retries = 2, delayMs = 400) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await migrate();
+      return;
+    } catch (err) {
+      if (attempt >= retries) throw err;
+      console.error(`Migration attempt ${attempt + 1} failed, retrying:`, err.message);
+      await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
+}
+
 try {
-  await migrate();
+  await migrateWithRetry();
 } catch (err) {
   console.error('Migration failed', err);
   if (!process.env.VERCEL) process.exit(1);
