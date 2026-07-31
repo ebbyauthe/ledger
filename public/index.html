@@ -699,11 +699,22 @@ async function addPaymentAdmin(workerId, payment){
   const p = await api(`/api/admin/payments/${workerId}`, { method: 'POST', body: payment });
   if(!state.payments[workerId]) state.payments[workerId] = [];
   state.payments[workerId].unshift(p);
+  const list = state.entries[workerId] || [];
+  (p.matchedEntryIds || []).forEach(id => {
+    const entry = list.find(e => e.id === id);
+    if(entry){ entry.paid = true; entry.paymentSource = p.paymentSource; }
+  });
+  return p;
 }
 
 async function deletePaymentAdmin(workerId, paymentId){
-  await api(`/api/admin/payments/${workerId}/${paymentId}`, { method: 'DELETE' });
+  const res = await api(`/api/admin/payments/${workerId}/${paymentId}`, { method: 'DELETE' });
   state.payments[workerId] = (state.payments[workerId] || []).filter(p => p.id !== paymentId);
+  const list = state.entries[workerId] || [];
+  (res.revertedEntryIds || []).forEach(id => {
+    const entry = list.find(e => e.id === id);
+    if(entry){ entry.paid = false; entry.paymentSource = null; }
+  });
 }
 
 async function deleteWorker(workerId, password){
@@ -1011,7 +1022,7 @@ function renderMain(){
 
     <div class="entries-card" style="margin-top:16px;">
       <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;display:flex;justify-content:space-between;align-items:center;">
-        <span>Payments logged <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— your own record, doesn't change paid/unpaid status above</span></span>
+        <span>Payments logged <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— typing an amount marks whichever unpaid entries add up to it as paid</span></span>
         ${payments.length ? `<span style="text-transform:none;letter-spacing:normal;font-weight:600;color:var(--ink);">${fmtCAD(paymentsTotal)}</span>` : ''}
       </div>
       ${payments.length ? `
@@ -1197,8 +1208,16 @@ function renderMain(){
       return;
     }
     try{
-      await addPaymentAdmin(worker.id, { amount, paymentSource, note });
+      const p = await addPaymentAdmin(worker.id, { amount, paymentSource, note });
       render();
+      const matchedCount = (p.matchedEntryIds || []).length;
+      if(matchedCount){
+        if(p.unappliedAmount > 0.005){
+          alert(`Marked ${matchedCount} ${matchedCount === 1 ? 'entry' : 'entries'} as paid (${fmtCAD(p.appliedAmount)}). ${fmtCAD(p.unappliedAmount)} of this payment didn't match any combination of unpaid entries and wasn't applied.`);
+        }
+      }else{
+        alert(`Payment logged, but no combination of unpaid entries matched ${fmtCAD(amount)}, so nothing was marked as paid.`);
+      }
     }catch(e){
       alert('Could not log payment: ' + e.message);
     }
@@ -1207,7 +1226,7 @@ function renderMain(){
   main.querySelectorAll('.payment-del-btn').forEach(btn => {
     btn.onclick = async () => {
       const id = btn.dataset.id;
-      if(!confirm('Delete this payment record? This cannot be undone.')) return;
+      if(!confirm('Delete this payment record? Any entries it marked as paid will revert to unpaid. This cannot be undone.')) return;
       try{
         await deletePaymentAdmin(worker.id, id);
         render();

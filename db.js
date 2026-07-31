@@ -63,8 +63,9 @@ export async function migrate() {
     )
   `);
 
-  // Free-standing payment log — a running record of amounts paid to a worker.
-  // Independent of entries.paid/payment_source; does not change any owed/unpaid math.
+  // Payment log — typing an amount here auto-marks whichever unpaid entries it matches as
+  // paid (see bestFitSubset in server.js). matched_entry_ids remembers which entries that was,
+  // so deleting a payment can revert just those entries back to unpaid.
   await db.execute(`
     CREATE TABLE IF NOT EXISTS payments (
       id TEXT PRIMARY KEY,
@@ -75,6 +76,11 @@ export async function migrate() {
       created_at INTEGER NOT NULL
     )
   `);
+
+  const paymentCols = (await db.execute('PRAGMA table_info(payments)')).rows.map(r => r.name);
+  if (!paymentCols.includes('matched_entry_ids')) {
+    await db.execute('ALTER TABLE payments ADD COLUMN matched_entry_ids TEXT');
+  }
 
   const workerCols = (await db.execute('PRAGMA table_info(workers)')).rows.map(r => r.name);
   if (!workerCols.includes('password_hash')) {
