@@ -100,6 +100,17 @@ async function loadWorkerSummary(){
 function paintWorkerSummary(){
   const w = workerSummary;
   const entryGroups = groupEntriesByPeriod(w.entries, w.periods || []);
+  const periodSummaries = entryGroups.map(g => {
+    const unpaid = g.entries.filter(e => !e.paid);
+    return {
+      period: g.period,
+      hours: g.entries.reduce((s,e) => s + e.hours, 0),
+      workerPay: g.entries.reduce((s,e) => s + e.workerPay, 0),
+      workerPayNGN: g.entries.reduce((s,e) => s + e.workerPayNGN, 0),
+      unpaidWorkerPay: unpaid.reduce((s,e) => s + e.workerPay, 0),
+      unpaidWorkerPayNGN: unpaid.reduce((s,e) => s + e.workerPayNGN, 0),
+    };
+  });
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="worker-view-wrap">
@@ -150,6 +161,31 @@ function paintWorkerSummary(){
             <div class="label">Still owed to you</div>
             <div class="value">${fmtCAD(w.unpaidWorkerPay)} · ${fmtNGN(w.unpaidWorkerPayNGN)}</div>
           </div>
+        </div>
+
+        <div class="entries-card" style="margin-bottom:16px;">
+          <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">Monthly totals</div>
+          ${periodSummaries.length ? `
+          <table>
+            <thead><tr><th>Period</th><th>Hours</th><th>Earned (CAD)</th><th>Earned (₦)</th><th>Still owed</th></tr></thead>
+            <tbody>
+              ${periodSummaries.map(p => `<tr>
+                <td>${escapeHtml(p.period.label)}</td>
+                <td>${p.hours.toFixed(2)}</td>
+                <td>${fmtCAD(p.workerPay)}</td>
+                <td>${fmtNGN(p.workerPayNGN)}</td>
+                <td>${fmtCAD(p.unpaidWorkerPay)}</td>
+              </tr>`).join('')}
+              <tr style="font-weight:600;background:#FCFBF8;">
+                <td>All-time</td>
+                <td>${w.totalHours.toFixed(2)}</td>
+                <td>${fmtCAD(w.workerPay)}</td>
+                <td>${fmtNGN(w.workerPayNGN)}</td>
+                <td>${fmtCAD(w.unpaidWorkerPay)}</td>
+              </tr>
+            </tbody>
+          </table>
+          ` : `<div class="empty-entries">No hours logged yet.</div>`}
         </div>
 
         <div class="entries-card">
