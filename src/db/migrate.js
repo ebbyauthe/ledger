@@ -1,9 +1,5 @@
-import { createClient } from '@libsql/client';
-
-export const db = createClient({
-  url: process.env.TURSO_DATABASE_URL || 'file:./data/local.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
+import crypto from 'node:crypto';
+import { db } from './client.js';
 
 export async function migrate() {
   await db.execute('PRAGMA foreign_keys = ON');
@@ -37,6 +33,17 @@ export async function migrate() {
     )
   `);
 
+  // Manually-declared pay periods (e.g. "July 2026"), shared across all workers. An entry's
+  // period is set explicitly when it's logged — not inferred from its date — so periods stay
+  // under the admin's control (e.g. backdated entries can still count toward the open period).
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS periods (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      started_at INTEGER NOT NULL
+    )
+  `);
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS admin_sessions (
       token TEXT PRIMARY KEY,
@@ -64,8 +71,8 @@ export async function migrate() {
   `);
 
   // Payment log — typing an amount here auto-marks whichever unpaid entries it matches as
-  // paid (see bestFitSubset in server.js). matched_entry_ids remembers which entries that was,
-  // so deleting a payment can revert just those entries back to unpaid.
+  // paid (see bestFitSubset in src/lib/subsetSum.js). matched_entry_ids remembers which entries
+  // that was, so deleting a payment can revert just those entries back to unpaid.
   await db.execute(`
     CREATE TABLE IF NOT EXISTS payments (
       id TEXT PRIMARY KEY,
@@ -100,6 +107,24 @@ export async function migrate() {
   }
   if (entryCols.includes('end_time')) {
     await db.execute('ALTER TABLE entries DROP COLUMN end_time');
+  }
+  if (!entryCols.includes('period_id')) {
+    await db.execute('ALTER TABLE entries ADD COLUMN period_id TEXT REFERENCES periods(id)');
+  }
+
+  // One-time backfill: the first time periods are introduced, everything logged so far
+  // predates the feature and was worked in July, so it becomes the initial "July 2026" period.
+  const periodCount = (await db.execute('SELECT COUNT(*) AS c FROM periods')).rows[0].c;
+  if (periodCount === 0) {
+    const initialPeriodId = crypto.randomBytes(6).toString('hex');
+    await db.execute({
+      sql: 'INSERT INTO periods (id, label, started_at) VALUES (?, ?, ?)',
+      args: [initialPeriodId, 'July 2026', Date.now()],
+    });
+    await db.execute({
+      sql: 'UPDATE entries SET period_id = ? WHERE period_id IS NULL',
+      args: [initialPeriodId],
+    });
   }
 
   await db.execute(`

@@ -12,11 +12,24 @@ conversion.
 
 ## How it's built
 
-- **Frontend:** one static `public/index.html` (no build step) — same
-  visual design as the original prototype, now talking to a real backend
-  over `fetch()` instead of the Claude-only `window.storage` API.
-- **Backend:** Node.js + Express (`server.js`), a handful of REST
-  endpoints under `/api/...`.
+- **Frontend:** static HTML/CSS/JS under `public/` — still no build step,
+  but split into ES modules (`public/js/*.js`) by concern (formatting,
+  API calls, shared state/pay-math, admin rendering, worker rendering)
+  instead of one long inline `<script>`. Talks to the backend over
+  `fetch()`.
+- **Backend:** Node.js + Express (`server.js` is just the app entry
+  point — middleware setup, static file serving, and the `/admin` shell
+  route). The actual REST API lives in `src/`, organized by concern:
+  - `src/routes/` — one file per resource (`adminWorkers.js`,
+    `adminEntries.js`, `adminPayments.js`, `adminPeriods.js`,
+    `adminTimers.js`, `adminSettings.js`, `adminState.js`,
+    `adminAuth.js`, `worker.js`), combined in `src/routes/index.js`.
+  - `src/middleware/` — `requireAdmin`/`requireWorkerSession` session
+    gates, the shared login rate limiter.
+  - `src/lib/` — pure helpers with no Express dependency: password/session
+    crypto, input validation, response mappers, the payment subset-sum
+    matcher.
+  - `src/db/` — the Turso/libSQL client and schema migration.
 - **Database:** SQLite, via [Turso](https://turso.tech) (libSQL) so data
   actually persists on a free host. Locally, no Turso account is needed —
   it falls back to a plain SQLite file at `data/local.db`.
@@ -65,7 +78,7 @@ not use the CLI — it gives you the same URL and token.)
 
 Requests run as serverless functions — no persistent Node process, so
 admin sessions are stored in the Turso `admin_sessions` table rather than
-in-memory (see `db.js` / `server.js`). This also means there's no
+in-memory (see `src/db/` / `src/middleware/`). This also means there's no
 Render-style spin-down: cold starts are rare and sub-second.
 
 ## Per-worker access control
@@ -89,12 +102,27 @@ admin session.
 
 ## File map
 
-- `server.js` — Express app: admin auth, all `/api/*` routes, serves
-  `public/` locally. Exports the app for serverless use.
+- `server.js` — Express app entry point: middleware, static file
+  serving, the `/admin` shell route, migration-on-boot. Exports the app
+  for serverless use.
+- `src/routes/` — all `/api/*` route handlers, one file per resource.
+- `src/middleware/` — `requireAdmin`, `requireWorkerSession`, the login
+  rate limiter.
+- `src/lib/` — framework-free helpers: `auth.js` (session/password
+  crypto), `validation.js`, `mappers.js` (DB row → API shape), `subsetSum.js`
+  (the payment-matching algorithm), `sessions.js` (session pruning).
+- `src/db/` — `client.js` (Turso/libSQL connection) and `migrate.js`
+  (schema + migrations).
 - `api/index.js` — Vercel serverless entry point; wraps `server.js`.
 - `vercel.json` — rewrites every request to `api/index.js` so Express's
   own routing (static files, `/admin`, `/api/*`) handles it, same as
   running `server.js` directly.
-- `db.js` — Turso/libSQL client + schema migration.
-- `public/index.html` — the whole frontend (worker view + admin view).
+- `public/index.html` — the page shell (loads `styles.css` and
+  `js/main.js` as an ES module).
+- `public/styles.css` — all styling.
+- `public/js/` — the frontend, split by concern: `api.js` (fetch
+  wrapper), `format.js` (date/currency formatting), `state.js` (shared
+  state + pay-math), `modal.js`, `admin-data.js`/`admin-render.js`
+  (admin view), `worker-render.js` (worker view), `main.js` (boots
+  whichever view matches the current path).
 - `.env.example` — copy to `.env` for local dev.
