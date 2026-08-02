@@ -7,6 +7,7 @@ let workerNames = [];
 let workerViewSelectedId = null;
 let workerSummary = null;
 let workerTimerTickHandle = null;
+let workerViewTab = 'overview';
 
 function clearWorkerTimerTick(){
   if(workerTimerTickHandle) clearInterval(workerTimerTickHandle);
@@ -122,6 +123,14 @@ function paintWorkerSummary(){
         <h2 class="wv-title">${escapeHtml(w.name)}</h2>
         <p class="wv-sub">Your hours and earnings</p>
 
+        <div class="wv-tabs">
+          <button class="wv-tab ${workerViewTab === 'overview' ? 'active' : ''}" data-tab="overview">Overview</button>
+          <button class="wv-tab ${workerViewTab === 'monthly' ? 'active' : ''}" data-tab="monthly">Monthly totals</button>
+          <button class="wv-tab ${workerViewTab === 'hours' ? 'active' : ''}" data-tab="hours">Hours</button>
+          <button class="wv-tab ${workerViewTab === 'timer' ? 'active' : ''}" data-tab="timer">Timer log</button>
+        </div>
+
+        ${workerViewTab === 'overview' ? `
         <div class="receipt">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
             <div>
@@ -162,9 +171,10 @@ function paintWorkerSummary(){
             <div class="value">${fmtCAD(w.unpaidWorkerPay)} · ${fmtNGN(w.unpaidWorkerPayNGN)}</div>
           </div>
         </div>
+        ` : ''}
 
-        <div class="entries-card" style="margin-bottom:16px;">
-          <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">Monthly totals</div>
+        ${workerViewTab === 'monthly' ? `
+        <div class="entries-card">
           ${periodSummaries.length ? `
           <table>
             <thead><tr><th>Period</th><th>Hours</th><th>Earned (CAD)</th><th>Earned (₦)</th><th>Still owed</th></tr></thead>
@@ -187,7 +197,9 @@ function paintWorkerSummary(){
           </table>
           ` : `<div class="empty-entries">No hours logged yet.</div>`}
         </div>
+        ` : ''}
 
+        ${workerViewTab === 'hours' ? `
         <div class="entries-card">
           ${w.entries.length ? entryGroups.map(g => `
           <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;display:flex;justify-content:space-between;align-items:center;">
@@ -207,9 +219,10 @@ function paintWorkerSummary(){
             </tbody>
           </table>`).join('') : `<div class="empty-entries">No hours logged yet.</div>`}
         </div>
+        ` : ''}
 
-        <div class="entries-card" style="margin-top:16px;">
-          <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">Your timer sessions</div>
+        ${workerViewTab === 'timer' ? `
+        <div class="entries-card">
           ${w.timerSessions.length ? `
           <table>
             <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th></tr></thead>
@@ -222,16 +235,24 @@ function paintWorkerSummary(){
               </tr>`).join('')}
             </tbody>
           </table>
-          ` : `<div class="empty-entries">No timer sessions yet. Use the button above to start one.</div>`}
+          ` : `<div class="empty-entries">No timer sessions yet. Start one from the Overview tab.</div>`}
         </div>
+        ` : ''}
       </div>
     </div>
   `;
+  app.querySelectorAll('.wv-tab').forEach(btn => {
+    btn.onclick = () => {
+      workerViewTab = btn.dataset.tab;
+      paintWorkerSummary();
+    };
+  });
   document.getElementById('wvSwitch').onclick = async () => {
     clearWorkerTimerTick();
     try{ await api('/api/workers/logout', { method: 'POST' }); }catch(e){}
     workerViewSelectedId = null;
     workerSummary = null;
+    workerViewTab = 'overview';
     renderWorkerPicker();
   };
   const timerStartBtn = document.getElementById('timerStartBtn');
