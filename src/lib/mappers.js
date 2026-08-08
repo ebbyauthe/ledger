@@ -33,6 +33,7 @@ export function mapTimerSession(row) {
     startedAt: row.started_at,
     endedAt: row.ended_at ?? null,
     note: row.note || '',
+    logged: !!row.logged,
   };
 }
 

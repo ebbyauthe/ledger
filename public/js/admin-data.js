@@ -95,6 +95,13 @@ export async function deletePaymentAdmin(workerId, paymentId){
   });
 }
 
+export async function setTimerLogged(workerId, sessionId, logged){
+  const updated = await api(`/api/admin/timers/${workerId}/${sessionId}/logged`, { method: 'PUT', body: { logged } });
+  const list = state.timers[workerId] || [];
+  const idx = list.findIndex(t => t.id === sessionId);
+  if(idx !== -1) list[idx] = updated;
+}
+
 export async function deleteWorker(workerId, password){
   await api(`/api/admin/workers/${workerId}`, { method: 'DELETE', body: { password } });
   state.workers = state.workers.filter(w => w.id !== workerId);

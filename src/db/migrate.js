@@ -112,6 +112,13 @@ export async function migrate() {
     await db.execute('ALTER TABLE entries ADD COLUMN period_id TEXT REFERENCES periods(id)');
   }
 
+  // Lets admin check off a timer session once its hours have been manually entered as a
+  // real entries row — purely a bookkeeping flag, doesn't create or link to that entry.
+  const timerCols = (await db.execute('PRAGMA table_info(timer_sessions)')).rows.map(r => r.name);
+  if (!timerCols.includes('logged')) {
+    await db.execute('ALTER TABLE timer_sessions ADD COLUMN logged INTEGER NOT NULL DEFAULT 0');
+  }
+
   // One-time backfill: the first time periods are introduced, everything logged so far
   // predates the feature and was worked in July, so it becomes the initial "July 2026" period.
   const periodCount = (await db.execute('SELECT COUNT(*) AS c FROM periods')).rows[0].c;

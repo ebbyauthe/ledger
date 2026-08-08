@@ -8,7 +8,8 @@ import { fmtCAD, fmtNGN, fmtDuration, fmtClockBoth, fmtDayTZ, fmtWhenCell, fmtPa
 import { openModal, modalOpen } from './modal.js';
 import {
   saveSettings, fetchExchangeRate, addWorker, addPeriod, updateWorkerShare, resetWorkerPassword,
-  addEntryAdmin, deleteEntryAdmin, setEntryPaid, markAllPaid, addPaymentAdmin, deletePaymentAdmin, deleteWorker,
+  addEntryAdmin, deleteEntryAdmin, setEntryPaid, markAllPaid, addPaymentAdmin, deletePaymentAdmin,
+  setTimerLogged, deleteWorker,
 } from './admin-data.js';
 
 let selectedWorkerId = null;
@@ -374,13 +375,14 @@ function renderMain(){
       </div>
       ${timerSessions.length ? `
       <table>
-        <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th></th></tr></thead>
+        <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th>Added</th><th></th></tr></thead>
         <tbody>
           ${timerSessions.map(t => `<tr>
             <td>${fmtWhenCell(t.startedAt)}</td>
             <td>${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
             <td>${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
             <td class="note-col">${escapeHtml(t.note || '')}</td>
+            <td><input type="checkbox" class="timer-logged-checkbox" data-id="${t.id}" ${t.logged ? 'checked' : ''} title="I've checked this session and added its hours as a work hour entry"></td>
             <td>
               ${!t.endedAt ? `<button class="settings-toggle timer-stop-btn" data-id="${t.id}">Stop</button>` : ''}
               <button class="timer-del-btn" data-id="${t.id}">Delete</button>
@@ -580,6 +582,22 @@ function renderMain(){
         render();
       }catch(e){
         alert('Could not delete timer session: ' + e.message);
+      }
+    };
+  });
+
+  main.querySelectorAll('.timer-logged-checkbox').forEach(cb => {
+    cb.onchange = async () => {
+      const sessionId = cb.dataset.id;
+      const logged = cb.checked;
+      cb.disabled = true;
+      try{
+        await setTimerLogged(worker.id, sessionId, logged);
+        render();
+      }catch(e){
+        alert('Could not update: ' + e.message);
+        cb.checked = !logged;
+        cb.disabled = false;
       }
     };
   });

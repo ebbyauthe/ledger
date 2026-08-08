@@ -225,13 +225,14 @@ function paintWorkerSummary(){
         <div class="entries-card">
           ${w.timerSessions.length ? `
           <table>
-            <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th></tr></thead>
+            <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th>Added to hours</th></tr></thead>
             <tbody>
               ${w.timerSessions.map(t => `<tr>
                 <td>${fmtWhenCell(t.startedAt)}</td>
                 <td>${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
                 <td class="timer-row-duration" data-started="${t.startedAt}" data-ended="${t.endedAt || ''}">${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
                 <td class="note-col">${escapeHtml(t.note || '')}</td>
+                <td>${t.logged ? '✓' : '—'}</td>
               </tr>`).join('')}
             </tbody>
           </table>
