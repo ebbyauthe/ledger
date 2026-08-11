@@ -138,11 +138,15 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
 router.post('/workers/:id/timer/start', requireWorkerSession, async (req, res) => {
   const { id } = req.params;
   const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
-  const running = (await db.execute({
-    sql: 'SELECT id FROM timer_sessions WHERE worker_id = ? AND ended_at IS NULL',
-    args: [id],
-  })).rows[0];
-  if (running) return res.status(409).json({ error: 'timer already running' });
+  // Only one worker can be clocked in at a time across the whole team, not just one each —
+  // so this checks globally rather than scoping to this worker's own sessions. Admin can
+  // still force-stop a stuck/forgotten timer via the admin Timer log to unblock everyone else.
+  const running = (await db.execute('SELECT worker_id FROM timer_sessions WHERE ended_at IS NULL')).rows[0];
+  if (running) {
+    return res.status(409).json({
+      error: running.worker_id === id ? 'timer already running' : 'someone else is already clocked in',
+    });
+  }
   const sessionId = uid();
   const startedAt = Date.now();
   await db.execute({
