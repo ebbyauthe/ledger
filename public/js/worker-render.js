@@ -174,29 +174,54 @@ function paintWorkerSummary(){
         ` : ''}
 
         ${workerViewTab === 'monthly' ? `
-        <div class="entries-card">
           ${periodSummaries.length ? `
-          <table>
-            <thead><tr><th>Period</th><th>Hours</th><th>Earned (CAD)</th><th>Earned (₦)</th><th>Still owed</th></tr></thead>
-            <tbody>
-              ${periodSummaries.map(p => `<tr>
-                <td>${escapeHtml(p.period.label)}</td>
-                <td>${p.hours.toFixed(2)}</td>
-                <td>${fmtCAD(p.workerPay)}</td>
-                <td>${fmtNGN(p.workerPayNGN)}</td>
-                <td>${fmtCAD(p.unpaidWorkerPay)}</td>
-              </tr>`).join('')}
-              <tr style="font-weight:600;background:#FCFBF8;">
-                <td>All-time</td>
-                <td>${w.totalHours.toFixed(2)}</td>
-                <td>${fmtCAD(w.workerPay)}</td>
-                <td>${fmtNGN(w.workerPayNGN)}</td>
-                <td>${fmtCAD(w.unpaidWorkerPay)}</td>
-              </tr>
-            </tbody>
-          </table>
-          ` : `<div class="empty-entries">No hours logged yet.</div>`}
-        </div>
+          <div style="margin: 0 0 10px; font-size:13px; font-weight:600; color: var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em;">All-time</div>
+          <div class="receipt">
+            <div class="receipt-grid wv-grid">
+              <div class="receipt-item">
+                <div class="label">Hours logged</div>
+                <div class="value">${w.totalHours.toFixed(1)}</div>
+              </div>
+              <div class="receipt-item highlight">
+                <div class="label">Earned (CAD)</div>
+                <div class="value">${fmtCAD(w.workerPay)}</div>
+              </div>
+              <div class="receipt-item highlight">
+                <div class="label">Earned (₦)</div>
+                <div class="value">${fmtNGN(w.workerPayNGN)}</div>
+              </div>
+            </div>
+            <hr class="receipt-divider">
+            <div class="receipt-item deduction">
+              <div class="label">Still owed to you</div>
+              <div class="value">${fmtCAD(w.unpaidWorkerPay)} · ${fmtNGN(w.unpaidWorkerPayNGN)}</div>
+            </div>
+          </div>
+          ${periodSummaries.map(p => `
+          <div style="margin: 20px 0 10px; font-size:13px; font-weight:600; color: var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em;">${escapeHtml(p.period.label)}</div>
+          <div class="receipt">
+            <div class="receipt-grid wv-grid">
+              <div class="receipt-item">
+                <div class="label">Hours logged</div>
+                <div class="value">${p.hours.toFixed(1)}</div>
+              </div>
+              <div class="receipt-item highlight">
+                <div class="label">Earned (CAD)</div>
+                <div class="value">${fmtCAD(p.workerPay)}</div>
+              </div>
+              <div class="receipt-item highlight">
+                <div class="label">Earned (₦)</div>
+                <div class="value">${fmtNGN(p.workerPayNGN)}</div>
+              </div>
+            </div>
+            <hr class="receipt-divider">
+            <div class="receipt-item deduction">
+              <div class="label">Still owed to you</div>
+              <div class="value">${fmtCAD(p.unpaidWorkerPay)} · ${fmtNGN(p.unpaidWorkerPayNGN)}</div>
+            </div>
+          </div>
+          `).join('')}
+          ` : `<div class="entries-card"><div class="empty-entries">No hours logged yet.</div></div>`}
         ` : ''}
 
         ${workerViewTab === 'hours' ? `

@@ -702,46 +702,59 @@ function renderMonthlyMain(main){
   const allTime = calcAllWorkersTotals();
   const periodRows = calcAllPeriodsTotals();
 
+  const receiptCard = (label, t) => `
+    <div style="margin: 20px 0 10px; font-size:13px; font-weight:600; color: var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em;">${escapeHtml(label)}</div>
+    <div class="receipt">
+      <div class="receipt-grid">
+        <div class="receipt-item">
+          <div class="label">Hours logged</div>
+          <div class="value">${t.totalHours.toFixed(1)}</div>
+        </div>
+        <div class="receipt-item">
+          <div class="label">Gross earned</div>
+          <div class="value">${fmtCAD(t.gross)}</div>
+        </div>
+        <div class="receipt-item deduction">
+          <div class="label">Tax</div>
+          <div class="value">-${fmtCAD(t.tax)}</div>
+        </div>
+        <div class="receipt-item highlight">
+          <div class="label">Worker pay</div>
+          <div class="value">${fmtCAD(t.workerPay)}</div>
+        </div>
+        <div class="receipt-item highlight">
+          <div class="label">Worker pay (₦)</div>
+          <div class="value">${fmtNGN(t.workerPayNGN)}</div>
+        </div>
+      </div>
+      <hr class="receipt-divider">
+      <div class="receipt-item">
+        <div class="label">Your take (after tax &amp; worker pay)</div>
+        <div class="value">${fmtCAD(t.myTake)}</div>
+      </div>
+      <div class="receipt-item deduction">
+        <div class="label">Still owed</div>
+        <div class="value">${fmtCAD(t.unpaidWorkerPay)} · ${fmtNGN(t.unpaidWorkerPayNGN)}</div>
+      </div>
+      <div class="receipt-item deduction">
+        <div class="label">Owed back to you (paid from personal funds)</div>
+        <div class="value">${fmtCAD(t.personalAdvance)} · ${fmtNGN(t.personalAdvanceNGN)}</div>
+      </div>
+    </div>
+  `;
+
   main.innerHTML = `
     <div class="worker-header">
       <div>
         <h1>Monthly totals</h1>
-        <div class="sub">${state.periods.length} period${state.periods.length === 1 ? '' : 's'} · all-time total at the bottom</div>
+        <div class="sub">${state.periods.length} period${state.periods.length === 1 ? '' : 's'}</div>
       </div>
       <button class="btn-primary" id="startPeriodBtn">+ Start new period</button>
     </div>
 
-    <div class="entries-card">
-      ${periodRows.length ? `
-      <table>
-        <thead>
-          <tr>
-            <th>Period</th><th>Hours</th><th>Gross</th><th>Tax</th><th>Worker pay</th><th>Still owed</th><th>Your take</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${periodRows.map(r => `<tr>
-            <td>${escapeHtml(r.period.label)}</td>
-            <td>${r.totals.totalHours.toFixed(2)}</td>
-            <td>${fmtCAD(r.totals.gross)}</td>
-            <td>${fmtCAD(r.totals.tax)}</td>
-            <td>${fmtCAD(r.totals.workerPay)}</td>
-            <td>${fmtCAD(r.totals.unpaidWorkerPay)}</td>
-            <td>${fmtCAD(r.totals.myTake)}</td>
-          </tr>`).join('')}
-          <tr style="font-weight:600;background:#FCFBF8;">
-            <td>All-time</td>
-            <td>${allTime.totalHours.toFixed(2)}</td>
-            <td>${fmtCAD(allTime.gross)}</td>
-            <td>${fmtCAD(allTime.tax)}</td>
-            <td>${fmtCAD(allTime.workerPay)}</td>
-            <td>${fmtCAD(allTime.unpaidWorkerPay)}</td>
-            <td>${fmtCAD(allTime.myTake)}</td>
-          </tr>
-        </tbody>
-      </table>
-      ` : `<div class="empty-entries">No periods yet. Start one to begin grouping hours by month.</div>`}
-    </div>
+    ${receiptCard('All-time', allTime)}
+
+    ${periodRows.length ? periodRows.map(r => receiptCard(r.period.label, r.totals)).join('') : `<div class="entries-card"><div class="empty-entries">No periods yet. Start one to begin grouping hours by month.</div></div>`}
   `;
 
   document.getElementById('startPeriodBtn').onclick = () => {

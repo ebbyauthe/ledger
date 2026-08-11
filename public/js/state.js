@@ -112,7 +112,7 @@ export function calcPeriodTotals(periodId){
   const rate = state.settings.rate;
   const taxPct = state.settings.taxPercent;
   const fx = state.settings.exchangeRate || 0;
-  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, unpaidWorkerPay = 0;
+  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, unpaidWorkerPay = 0, personalAdvance = 0;
   state.workers.forEach(w => {
     const sharePct = w.sharePercent;
     (state.entries[w.id] || []).forEach(e => {
@@ -124,10 +124,15 @@ export function calcPeriodTotals(periodId){
       tax += g * taxPct / 100;
       workerPay += wp;
       if(!e.paid) unpaidWorkerPay += wp;
+      if(e.paid && e.paymentSource === 'personal') personalAdvance += wp;
     });
   });
   const myTake = gross - tax - workerPay;
-  return { totalHours, gross, tax, workerPay, myTake, workerPayNGN: workerPay * fx, unpaidWorkerPay, unpaidWorkerPayNGN: unpaidWorkerPay * fx };
+  return {
+    totalHours, gross, tax, workerPay, myTake,
+    workerPayNGN: workerPay * fx, unpaidWorkerPay, unpaidWorkerPayNGN: unpaidWorkerPay * fx,
+    personalAdvance, personalAdvanceNGN: personalAdvance * fx,
+  };
 }
 
 export function calcAllPeriodsTotals(){
