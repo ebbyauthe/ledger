@@ -5,3 +5,4 @@ data/
 
 .vercel
 .env*
+.claude/
