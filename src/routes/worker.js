@@ -19,7 +19,7 @@ router.get('/worker-names', async (req, res) => {
 router.get('/workers/session', async (req, res) => {
   const token = req.cookies[WORKER_SESSION_COOKIE];
   if (!token) return res.json({ workerId: null });
-  const row = (await db.execute({ sql: 'SELECT worker_id, expires_at FROM worker_sessions WHERE token = ?', args: [token] })).rows[0];
+  const row = (await db.execute({ sql: 'SELECT worker_id, expires_at FROM worker_sessions WHERE token = ?', args: [hashToken(token)] })).rows[0];
   if (!row || row.expires_at < Date.now()) return res.json({ workerId: null });
   res.json({ workerId: row.worker_id });
 });
@@ -56,7 +56,7 @@ router.post('/workers/logout', async (req, res) => {
   res.json({ ok: true });
 });
 
-router.put('/workers/:id/password', requireWorkerSession, async (req, res) => {
+router.put('/workers/:id/password', loginLimiter, requireWorkerSession, async (req, res) => {
   const { id } = req.params;
   const { currentPassword, newPassword } = req.body || {};
   const worker = (await db.execute({ sql: 'SELECT password_hash FROM workers WHERE id = ?', args: [id] })).rows[0];

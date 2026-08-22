@@ -12,8 +12,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.set('trust proxy', 1);
 
-// CSP disabled: the frontend is plain static HTML/CSS/JS with no build step.
-app.use(helmet({ contentSecurityPolicy: false }));
+// Helmet's default CSP already fits this app well without a build step: script-src stays
+// locked to 'self' (no inline script anywhere since the frontend moved to ES modules), while
+// style-src/font-src stay permissive enough for the inline style="" attributes throughout the
+// JS templates and the Google Fonts stylesheet. The one addition is connect-src, since the
+// admin view fetches the live CAD->NGN rate from an external API.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      connectSrc: ["'self'", 'https://open.er-api.com'],
+    },
+  },
+}));
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));

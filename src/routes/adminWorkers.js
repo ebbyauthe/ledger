@@ -7,7 +7,7 @@ import { uid, generatePassword, hashPassword, safeEqual } from '../lib/auth.js';
 const router = Router();
 
 router.post('/workers', requireAdmin, async (req, res) => {
-  const name = (req.body?.name || '').trim();
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   if (!name) return res.status(400).json({ error: 'name required' });
   let share = Number(req.body?.sharePercent);
   if (!Number.isFinite(share)) share = 50;

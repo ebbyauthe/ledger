@@ -8,7 +8,7 @@ const router = Router();
 // Manually-declared pay periods. Starting a new one doesn't touch existing entries — it just
 // becomes the new default for entries logged from now on (see addEntry/getCurrentPeriodId in adminEntries.js).
 router.post('/periods', requireAdmin, async (req, res) => {
-  const label = (req.body?.label || '').trim().slice(0, 100);
+  const label = typeof req.body?.label === 'string' ? req.body.label.trim().slice(0, 100) : '';
   if (!label) return res.status(400).json({ error: 'label required' });
   const id = uid();
   const startedAt = Date.now();
