@@ -24,8 +24,26 @@ body{
 }
 .app{
   display: flex;
+  flex-direction: column;
   min-height: 100vh;
 }
+.app-inner{
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.payment-banner{
+  padding: 10px 24px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--accent-soft);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.payment-banner.overdue{
+  background: var(--rust-soft);
+}
+.payment-banner strong{ font-weight: 700; }
 
 /* Focus ring, consistent across every interactive element */
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible{

@@ -108,6 +108,20 @@ export function currentPeriod(){
   return state.periods.slice().sort((a,b) => b.startedAt - a.startedAt)[0] || null;
 }
 
+// Ebenezer's own invoice-payment cycle from his client, not when workers get paid: the last
+// day of the period's calendar month (taken from when the period was started), plus 30 days,
+// shifted back to the nearest Friday if that lands on a weekend.
+export function computePaymentDate(periodStartedAt){
+  const started = new Date(periodStartedAt);
+  const lastDayOfMonth = new Date(started.getFullYear(), started.getMonth() + 1, 0);
+  const paymentDate = new Date(lastDayOfMonth);
+  paymentDate.setDate(paymentDate.getDate() + 30);
+  const dayOfWeek = paymentDate.getDay();
+  if(dayOfWeek === 0) paymentDate.setDate(paymentDate.getDate() - 2); // Sunday -> Friday
+  if(dayOfWeek === 6) paymentDate.setDate(paymentDate.getDate() - 1); // Saturday -> Friday
+  return paymentDate;
+}
+
 export function calcPeriodTotals(periodId){
   const rate = state.settings.rate;
   const taxPct = state.settings.taxPercent;

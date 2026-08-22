@@ -38,6 +38,10 @@ export function fmtPaymentDate(ts){
   return new Date(ts).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
+export function fmtDateLong(date){
+  return date.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
 // Two-line cell: the date (Quebec-anchored) on top, all three zones' clock time below.
 export function fmtWhenCell(ts){
   return `<div>${fmtDayTZ(ts, TZ_QC)}</div><div>${fmtClockBoth(ts)}</div>`;

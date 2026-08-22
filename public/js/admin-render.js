@@ -2,9 +2,9 @@ import { api } from './api.js';
 import {
   state, replaceState, SHARE_DEFAULT, OVERVIEW_ID, MONTHLY_ID,
   calcWorkerTotals, calcAllWorkersTotals, isWorkerClockedIn, calcEntryRow,
-  groupEntriesByPeriod, currentPeriod, calcAllPeriodsTotals,
+  groupEntriesByPeriod, currentPeriod, calcAllPeriodsTotals, computePaymentDate,
 } from './state.js';
-import { fmtCAD, fmtNGN, fmtDuration, fmtClockBoth, fmtDayTZ, fmtWhenCell, fmtPaymentDate, escapeHtml, TZ_QC } from './format.js';
+import { fmtCAD, fmtNGN, fmtDuration, fmtClockBoth, fmtDayTZ, fmtWhenCell, fmtPaymentDate, fmtDateLong, escapeHtml, TZ_QC } from './format.js';
 import { openModal, modalOpen } from './modal.js';
 import {
   saveSettings, fetchExchangeRate, addWorker, addPeriod, updateWorkerShare, resetWorkerPassword,
@@ -86,17 +86,40 @@ function renderAdminLogin(errorMsg){
 
 /* ---------------- Admin: rendering ---------------- */
 
+// Reminder about Ebenezer's own invoice payment from his client (not worker pay) — shows
+// only when the current period's computed payment date is within a week, or overdue.
+function renderPaymentBanner(){
+  const current = currentPeriod();
+  if(!current) return '';
+  const paymentDate = computePaymentDate(current.startedAt);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const pd = new Date(paymentDate);
+  pd.setHours(0, 0, 0, 0);
+  const daysUntil = Math.round((pd - today) / 86400000);
+  if(daysUntil > 7) return '';
+  const overdue = daysUntil < 0;
+  const dateStr = fmtDateLong(paymentDate);
+  const message = overdue
+    ? `Payment for <strong>${escapeHtml(current.label)}</strong> was expected ${dateStr} — check if it's arrived.`
+    : `Payment for <strong>${escapeHtml(current.label)}</strong> expected ${dateStr}${daysUntil === 0 ? ' (today)' : ` (in ${daysUntil} day${daysUntil === 1 ? '' : 's'})`}.`;
+  return `<div class="payment-banner${overdue ? ' overdue' : ''}">📅 ${message}</div>`;
+}
+
 export function render(){
   document.getElementById('app').innerHTML = `
-    <div class="sidebar">
-      <div class="brand">Ledger<small>Work hours portal</small></div>
-      <ul class="worker-list" id="workerList"></ul>
-      <button class="add-worker-btn" id="addWorkerBtn">+ Add worker</button>
-      <button class="settings-toggle" id="settingsToggle">Rate, tax &amp; exchange settings</button>
-      <a class="settings-toggle" href="/" target="_blank" rel="noopener">Open worker view ↗</a>
-      <button class="settings-toggle" id="logoutBtn">Log out</button>
+    ${renderPaymentBanner()}
+    <div class="app-inner">
+      <div class="sidebar">
+        <div class="brand">Ledger<small>Work hours portal</small></div>
+        <ul class="worker-list" id="workerList"></ul>
+        <button class="add-worker-btn" id="addWorkerBtn">+ Add worker</button>
+        <button class="settings-toggle" id="settingsToggle">Rate, tax &amp; exchange settings</button>
+        <a class="settings-toggle" href="/" target="_blank" rel="noopener">Open worker view ↗</a>
+        <button class="settings-toggle" id="logoutBtn">Log out</button>
+      </div>
+      <div class="main" id="main"></div>
     </div>
-    <div class="main" id="main"></div>
   `;
   wireStaticButtons();
   renderSidebar();
@@ -702,7 +725,7 @@ function renderMonthlyMain(main){
   const allTime = calcAllWorkersTotals();
   const periodRows = calcAllPeriodsTotals();
 
-  const receiptCard = (label, t) => `
+  const receiptCard = (label, t, paymentDate) => `
     <div style="margin: 20px 0 10px; font-size:13px; font-weight:600; color: var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em;">${escapeHtml(label)}</div>
     <div class="receipt">
       <div class="receipt-grid">
@@ -728,6 +751,12 @@ function renderMonthlyMain(main){
         </div>
       </div>
       <hr class="receipt-divider">
+      ${paymentDate ? `
+      <div class="receipt-item">
+        <div class="label">Expected payment from client</div>
+        <div class="value">${fmtDateLong(paymentDate)}</div>
+      </div>
+      ` : ''}
       <div class="receipt-item">
         <div class="label">Your take (after tax &amp; worker pay)</div>
         <div class="value">${fmtCAD(t.myTake)}</div>
@@ -754,7 +783,7 @@ function renderMonthlyMain(main){
 
     ${receiptCard('All-time', allTime)}
 
-    ${periodRows.length ? periodRows.map(r => receiptCard(r.period.label, r.totals)).join('') : `<div class="entries-card"><div class="empty-entries">No periods yet. Start one to begin grouping hours by month.</div></div>`}
+    ${periodRows.length ? periodRows.map(r => receiptCard(r.period.label, r.totals, computePaymentDate(r.period.startedAt))).join('') : `<div class="entries-card"><div class="empty-entries">No periods yet. Start one to begin grouping hours by month.</div></div>`}
   `;
 
   document.getElementById('startPeriodBtn').onclick = () => {
