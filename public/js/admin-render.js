@@ -109,8 +109,13 @@ function renderPaymentBanner(){
 export function render(){
   document.getElementById('app').innerHTML = `
     ${renderPaymentBanner()}
+    <div class="mobile-topbar">
+      <button class="hamburger-btn" id="hamburgerBtn" aria-label="Open menu">☰</button>
+      <span class="mobile-topbar-title">Ledger</span>
+    </div>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
     <div class="app-inner">
-      <div class="sidebar">
+      <div class="sidebar" id="sidebar">
         <div class="brand">Ledger<small>Work hours portal</small></div>
         <ul class="worker-list" id="workerList"></ul>
         <button class="add-worker-btn" id="addWorkerBtn">+ Add worker</button>
@@ -124,6 +129,17 @@ export function render(){
   wireStaticButtons();
   renderSidebar();
   renderMain();
+}
+
+// Mobile-only: the sidebar becomes a slide-in drawer instead of a stacked block, closed by
+// default on every render (so picking a worker/page naturally closes it behind you).
+function openSidebarDrawer(){
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarBackdrop').classList.add('open');
+}
+function closeSidebarDrawer(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarBackdrop').classList.remove('open');
 }
 
 function wireStaticButtons(){
@@ -191,6 +207,9 @@ function wireStaticButtons(){
     adminAuthenticated = false;
     renderAdminLogin();
   };
+
+  document.getElementById('hamburgerBtn').onclick = openSidebarDrawer;
+  document.getElementById('sidebarBackdrop').onclick = closeSidebarDrawer;
 }
 
 function renderSidebar(){
@@ -325,20 +344,20 @@ function renderMain(){
           ${g.entries.map(e => {
             const c = calcEntryRow(e.hours, worker.sharePercent);
             return `<tr>
-              <td>${e.date}</td>
-              <td>${e.hours.toFixed(2)}</td>
-              <td>${fmtCAD(c.gross)}</td>
-              <td>${fmtCAD(c.workerPay)}</td>
-              <td>${fmtNGN(c.workerPayNGN)}</td>
-              <td class="note-col">${escapeHtml(e.note || '')}</td>
-              <td>
+              <td data-label="Date">${e.date}</td>
+              <td data-label="Hours">${e.hours.toFixed(2)}</td>
+              <td data-label="Gross">${fmtCAD(c.gross)}</td>
+              <td data-label="Worker pay">${fmtCAD(c.workerPay)}</td>
+              <td data-label="Worker pay ₦">${fmtNGN(c.workerPayNGN)}</td>
+              <td class="note-col" data-label="Note">${escapeHtml(e.note || '')}</td>
+              <td data-label="Paid">
                 <select class="paid-select" data-id="${e.id}">
                   <option value="unpaid" ${!e.paid ? 'selected' : ''}>Unpaid</option>
                   <option value="personal" ${e.paid && e.paymentSource === 'personal' ? 'selected' : ''}>Paid (personal)</option>
                   <option value="official" ${e.paid && e.paymentSource === 'official' ? 'selected' : ''}>Paid (official)</option>
                 </select>
               </td>
-              <td><button class="del-btn" data-id="${e.id}">Delete</button></td>
+              <td data-label=""><button class="del-btn" data-id="${e.id}">Delete</button></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -371,11 +390,11 @@ function renderMain(){
         <thead><tr><th>Date</th><th>Amount</th><th>Source</th><th>Note</th><th></th></tr></thead>
         <tbody>
           ${payments.map(p => `<tr>
-            <td>${fmtPaymentDate(p.createdAt)}</td>
-            <td>${fmtCAD(p.amount)}</td>
-            <td>${p.paymentSource ? (p.paymentSource === 'personal' ? 'Personal' : 'Official') : '—'}</td>
-            <td class="note-col">${escapeHtml(p.note || '')}</td>
-            <td><button class="timer-del-btn payment-del-btn" data-id="${p.id}">Delete</button></td>
+            <td data-label="Date">${fmtPaymentDate(p.createdAt)}</td>
+            <td data-label="Amount">${fmtCAD(p.amount)}</td>
+            <td data-label="Source">${p.paymentSource ? (p.paymentSource === 'personal' ? 'Personal' : 'Official') : '—'}</td>
+            <td class="note-col" data-label="Note">${escapeHtml(p.note || '')}</td>
+            <td data-label=""><button class="timer-del-btn payment-del-btn" data-id="${p.id}">Delete</button></td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -401,12 +420,12 @@ function renderMain(){
         <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th>Added</th><th></th></tr></thead>
         <tbody>
           ${timerSessions.map(t => `<tr>
-            <td>${fmtWhenCell(t.startedAt)}</td>
-            <td>${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
-            <td>${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
-            <td class="note-col">${escapeHtml(t.note || '')}</td>
-            <td><input type="checkbox" class="timer-logged-checkbox" data-id="${t.id}" ${t.logged ? 'checked' : ''} title="I've checked this session and added its hours as a work hour entry"></td>
-            <td>
+            <td data-label="Start">${fmtWhenCell(t.startedAt)}</td>
+            <td data-label="Stop">${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
+            <td data-label="Duration">${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
+            <td class="note-col" data-label="Note">${escapeHtml(t.note || '')}</td>
+            <td data-label="Added"><input type="checkbox" class="timer-logged-checkbox" data-id="${t.id}" ${t.logged ? 'checked' : ''} title="I've checked this session and added its hours as a work hour entry"></td>
+            <td data-label="">
               ${!t.endedAt ? `<button class="settings-toggle timer-stop-btn" data-id="${t.id}">Stop</button>` : ''}
               <button class="timer-del-btn" data-id="${t.id}">Delete</button>
             </td>
@@ -690,12 +709,12 @@ function renderOverviewMain(main){
         </thead>
         <tbody>
           ${rows.map(r => `<tr>
-            <td>${escapeHtml(r.worker.name)}</td>
-            <td>${r.totals.totalHours.toFixed(2)}</td>
-            <td>${fmtCAD(r.totals.gross)}</td>
-            <td>${fmtCAD(r.totals.workerPay)}</td>
-            <td>${fmtCAD(r.totals.unpaidWorkerPay)}</td>
-            <td>${fmtCAD(r.totals.personalAdvance)}</td>
+            <td data-label="Worker">${escapeHtml(r.worker.name)}</td>
+            <td data-label="Hours">${r.totals.totalHours.toFixed(2)}</td>
+            <td data-label="Gross">${fmtCAD(r.totals.gross)}</td>
+            <td data-label="Worker pay">${fmtCAD(r.totals.workerPay)}</td>
+            <td data-label="Still owed">${fmtCAD(r.totals.unpaidWorkerPay)}</td>
+            <td data-label="Owed back to you">${fmtCAD(r.totals.personalAdvance)}</td>
           </tr>`).join('')}
         </tbody>
       </table>` : `<div class="empty-entries">No workers added yet.</div>`}
@@ -710,9 +729,9 @@ function renderOverviewMain(main){
         <thead><tr><th>Worker</th><th>Status</th><th>Last session</th></tr></thead>
         <tbody>
           ${timerRows.map(r => `<tr>
-            <td>${escapeHtml(r.worker.name)}</td>
-            <td>${r.running ? `<span class="timer-running-tag">🟢 Running since ${fmtClockBoth(r.running.startedAt)}</span>` : '—'}</td>
-            <td>${r.last ? `${fmtDayTZ(r.last.startedAt, TZ_QC)} · ${fmtClockBoth(r.last.startedAt)} · ${fmtDuration((r.last.endedAt || Date.now()) - r.last.startedAt)}${r.last.endedAt ? '' : ' (running)'}` : '—'}</td>
+            <td data-label="Worker">${escapeHtml(r.worker.name)}</td>
+            <td data-label="Status">${r.running ? `<span class="timer-running-tag">🟢 Running since ${fmtClockBoth(r.running.startedAt)}</span>` : '—'}</td>
+            <td data-label="Last session">${r.last ? `${fmtDayTZ(r.last.startedAt, TZ_QC)} · ${fmtClockBoth(r.last.startedAt)} · ${fmtDuration((r.last.endedAt || Date.now()) - r.last.startedAt)}${r.last.endedAt ? '' : ' (running)'}` : '—'}</td>
           </tr>`).join('')}
         </tbody>
       </table>

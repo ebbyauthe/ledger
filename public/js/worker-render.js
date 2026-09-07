@@ -114,7 +114,7 @@ function paintWorkerSummary(){
   });
   const app = document.getElementById('app');
   app.innerHTML = `
-    <div class="worker-view-wrap">
+    <div class="worker-view-wrap has-tabs">
       <div class="worker-view-card wide">
         <div class="wv-header">
           <button class="settings-toggle" id="wvSwitch">← Not ${escapeHtml(w.name)}? Switch</button>
@@ -124,10 +124,10 @@ function paintWorkerSummary(){
         <p class="wv-sub">Your hours and earnings</p>
 
         <div class="wv-tabs">
-          <button class="wv-tab ${workerViewTab === 'overview' ? 'active' : ''}" data-tab="overview">Overview</button>
-          <button class="wv-tab ${workerViewTab === 'monthly' ? 'active' : ''}" data-tab="monthly">Monthly totals</button>
-          <button class="wv-tab ${workerViewTab === 'hours' ? 'active' : ''}" data-tab="hours">Hours</button>
-          <button class="wv-tab ${workerViewTab === 'timer' ? 'active' : ''}" data-tab="timer">Timer log</button>
+          <button class="wv-tab ${workerViewTab === 'overview' ? 'active' : ''}" data-tab="overview"><span class="wv-tab-icon">🏠</span><span class="wv-tab-label">Overview</span></button>
+          <button class="wv-tab ${workerViewTab === 'monthly' ? 'active' : ''}" data-tab="monthly"><span class="wv-tab-icon">📅</span><span class="wv-tab-label">Monthly</span></button>
+          <button class="wv-tab ${workerViewTab === 'hours' ? 'active' : ''}" data-tab="hours"><span class="wv-tab-icon">📋</span><span class="wv-tab-label">Hours</span></button>
+          <button class="wv-tab ${workerViewTab === 'timer' ? 'active' : ''}" data-tab="timer"><span class="wv-tab-icon">⏱️</span><span class="wv-tab-label">Timer</span></button>
         </div>
 
         ${workerViewTab === 'overview' ? `
@@ -235,11 +235,11 @@ function paintWorkerSummary(){
             <thead><tr><th>Date</th><th>Hours</th><th>Earned (CAD)</th><th>Earned (₦)</th><th>Paid</th></tr></thead>
             <tbody>
               ${g.entries.map(e => `<tr>
-                <td>${e.date}</td>
-                <td>${e.hours.toFixed(2)}</td>
-                <td>${fmtCAD(e.workerPay)}</td>
-                <td>${fmtNGN(e.workerPayNGN)}</td>
-                <td>${e.paid ? '✓' : '—'}</td>
+                <td data-label="Date">${e.date}</td>
+                <td data-label="Hours">${e.hours.toFixed(2)}</td>
+                <td data-label="Earned (CAD)">${fmtCAD(e.workerPay)}</td>
+                <td data-label="Earned (₦)">${fmtNGN(e.workerPayNGN)}</td>
+                <td data-label="Paid">${e.paid ? '✓' : '—'}</td>
               </tr>`).join('')}
             </tbody>
           </table>`).join('') : `<div class="empty-entries">No hours logged yet.</div>`}
@@ -253,11 +253,11 @@ function paintWorkerSummary(){
             <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th>Added to hours</th></tr></thead>
             <tbody>
               ${w.timerSessions.map(t => `<tr>
-                <td>${fmtWhenCell(t.startedAt)}</td>
-                <td>${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
-                <td class="timer-row-duration" data-started="${t.startedAt}" data-ended="${t.endedAt || ''}">${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
-                <td class="note-col">${escapeHtml(t.note || '')}</td>
-                <td>${t.logged ? '✓' : '—'}</td>
+                <td data-label="Start">${fmtWhenCell(t.startedAt)}</td>
+                <td data-label="Stop">${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
+                <td class="timer-row-duration" data-label="Duration" data-started="${t.startedAt}" data-ended="${t.endedAt || ''}">${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
+                <td class="note-col" data-label="Note">${escapeHtml(t.note || '')}</td>
+                <td data-label="Added to hours">${t.logged ? '✓' : '—'}</td>
               </tr>`).join('')}
             </tbody>
           </table>
