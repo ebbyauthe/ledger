@@ -32,6 +32,18 @@ body{
   flex: 1;
   min-height: 0;
 }
+@media (max-width: 760px){
+  .app-inner{ flex-direction: column; }
+  .sidebar{
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    box-shadow: none;
+    padding: 16px;
+  }
+  .worker-list{ flex: none; max-height: 200px; }
+  .main{ padding: 20px 16px; max-width: 100%; }
+}
 .payment-banner{
   padding: 10px 24px;
   font-size: 13px;
@@ -175,6 +187,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .share-field{
   display:flex; align-items:center; gap:6px;
   font-size:13px; color: var(--ink-soft);
+  flex-wrap: wrap;
 }
 .share-field input{
   width: 54px;
@@ -213,6 +226,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   gap: 18px;
 }
 @media (max-width: 760px){ .receipt-grid{ grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 420px){ .receipt-grid{ grid-template-columns: 1fr; } }
 .receipt-item .label{
   font-size: 10px;
   text-transform: uppercase;
@@ -240,9 +254,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
-table{ width:100%; border-collapse: collapse; }
+table{ width:100%; border-collapse: collapse; min-width: 560px; }
 thead th{
   text-align:left;
   font-size: 10px;
@@ -413,6 +428,7 @@ tbody tr:hover{ background: #FCFBF8; }
   font-size: 13px;
   color: var(--ink-soft);
   margin-bottom: 18px;
+  flex-wrap: wrap;
 }
 .fx-bar input{
   width: 90px;
@@ -461,6 +477,9 @@ tbody tr:hover{ background: #FCFBF8; }
   justify-content:center;
   padding: 60px 20px;
 }
+@media (max-width: 480px){
+  .worker-view-wrap{ padding: 28px 14px; }
+}
 .worker-view-card{
   width: 420px;
   max-width: 100%;
@@ -483,6 +502,8 @@ tbody tr:hover{ background: #FCFBF8; }
   gap: 4px;
   margin-bottom: 20px;
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .wv-tab{
   background:none;
@@ -495,6 +516,8 @@ tbody tr:hover{ background: #FCFBF8; }
   cursor:pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: color .15s ease, border-color .15s ease;
 }
 .wv-tab:hover{ color: var(--ink); }
