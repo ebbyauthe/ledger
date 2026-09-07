@@ -610,6 +610,7 @@ tbody tr:hover{ background: #FCFBF8; }
 @media (max-width: 640px){
   .worker-view-wrap{ padding: 16px 12px; align-items: flex-start; }
   .worker-view-wrap.has-tabs{ padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .main.has-tabs{ padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   .wv-tabs{
     position: fixed;
     left: 0; right: 0; bottom: 0;

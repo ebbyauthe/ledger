@@ -15,6 +15,7 @@ import {
 let selectedWorkerId = null;
 let adminAuthenticated = false;
 let pollTimer = null;
+let adminWorkerTab = 'overview';
 
 /* ---------------- Admin: boot + polling ---------------- */
 
@@ -163,6 +164,7 @@ function wireStaticButtons(){
       share = Math.min(100, Math.max(0, share));
       const w = await addWorker(name, share);
       selectedWorkerId = w.id;
+      adminWorkerTab = 'overview';
       render();
       alert(`Share this password with ${w.name} so they can log in at the worker link:\n\n${w.password}\n\nThey can change it themselves later.`);
       return true;
@@ -234,7 +236,7 @@ function renderSidebar(){
     const li = document.createElement('li');
     li.className = w.id === selectedWorkerId ? 'active' : '';
     li.innerHTML = `<span>${clockedIn ? '🟢 ' : ''}${escapeHtml(w.name)}</span><span class="hrs">${totals.totalHours.toFixed(1)}h</span>`;
-    li.onclick = () => { selectedWorkerId = w.id; render(); };
+    li.onclick = () => { selectedWorkerId = w.id; adminWorkerTab = 'overview'; render(); };
     ul.appendChild(li);
   });
 }
@@ -243,11 +245,13 @@ function renderMain(){
   const main = document.getElementById('main');
 
   if(selectedWorkerId === OVERVIEW_ID){
+    main.classList.remove('has-tabs');
     renderOverviewMain(main);
     return;
   }
 
   if(selectedWorkerId === MONTHLY_ID){
+    main.classList.remove('has-tabs');
     renderMonthlyMain(main);
     return;
   }
@@ -255,9 +259,11 @@ function renderMain(){
   const worker = state.workers.find(w => w.id === selectedWorkerId);
 
   if(!worker){
+    main.classList.remove('has-tabs');
     main.innerHTML = `<div class="empty-state"><h2>No worker selected</h2><p>Add a worker on the left to start logging hours.</p></div>`;
     return;
   }
+  main.classList.add('has-tabs');
 
   const totals = calcWorkerTotals(worker.id);
   const entries = (state.entries[worker.id] || []).slice().sort((a,b) => b.date.localeCompare(a.date));
@@ -280,6 +286,14 @@ function renderMain(){
       </div>
     </div>
 
+    <div class="wv-tabs">
+      <button class="wv-tab ${adminWorkerTab === 'overview' ? 'active' : ''}" data-worker-tab="overview"><span class="wv-tab-icon">🏠</span><span class="wv-tab-label">Overview</span></button>
+      <button class="wv-tab ${adminWorkerTab === 'hours' ? 'active' : ''}" data-worker-tab="hours"><span class="wv-tab-icon">📋</span><span class="wv-tab-label">Hours</span></button>
+      <button class="wv-tab ${adminWorkerTab === 'payments' ? 'active' : ''}" data-worker-tab="payments"><span class="wv-tab-icon">💵</span><span class="wv-tab-label">Payments</span></button>
+      <button class="wv-tab ${adminWorkerTab === 'timer' ? 'active' : ''}" data-worker-tab="timer"><span class="wv-tab-icon">⏱️</span><span class="wv-tab-label">Timer log</span></button>
+    </div>
+
+    ${adminWorkerTab === 'overview' ? `
     <div class="fx-bar">
       <span>1 CAD → ₦</span>
       <input type="number" id="fxQuickInput" step="0.01" min="0" value="${state.settings.exchangeRate ? state.settings.exchangeRate.toFixed(2) : ''}">
@@ -324,7 +338,9 @@ function renderMain(){
         <div class="value">${fmtCAD(totals.personalAdvance)} · ${fmtNGN(totals.personalAdvanceNGN)}</div>
       </div>
     </div>
+    ` : ''}
 
+    ${adminWorkerTab === 'hours' ? `
     <div class="entries-card">
       ${entries.length ? entryGroups.map(g => {
         const groupHours = g.entries.reduce((s,e) => s + e.hours, 0);
@@ -379,8 +395,10 @@ function renderMain(){
         <button class="btn-primary" id="addEntryBtn">Add entry</button>
       </div>
     </div>
+    ` : ''}
 
-    <div class="entries-card" style="margin-top:16px;">
+    ${adminWorkerTab === 'payments' ? `
+    <div class="entries-card">
       <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;display:flex;justify-content:space-between;align-items:center;">
         <span>Payments logged <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— typing an amount marks whichever unpaid entries add up to it as paid</span></span>
         ${payments.length ? `<span style="text-transform:none;letter-spacing:normal;font-weight:600;color:var(--ink);">${fmtCAD(paymentsTotal)}</span>` : ''}
@@ -410,8 +428,10 @@ function renderMain(){
         <button class="btn-primary" id="logPaymentBtn">Log payment</button>
       </div>
     </div>
+    ` : ''}
 
-    <div class="entries-card" style="margin-top:16px;">
+    ${adminWorkerTab === 'timer' ? `
+    <div class="entries-card">
       <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">
         Timer log <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— self-reported by ${escapeHtml(worker.name)}, informational only, doesn't affect hours or pay</span>
       </div>
@@ -434,9 +454,18 @@ function renderMain(){
       </table>
       ` : `<div class="empty-entries">No timer sessions logged yet.</div>`}
     </div>
+    ` : ''}
   `;
 
-  document.getElementById('fxQuickInput').onchange = async (e) => {
+  main.querySelectorAll('.wv-tab').forEach(btn => {
+    btn.onclick = () => {
+      adminWorkerTab = btn.dataset.workerTab;
+      renderMain();
+    };
+  });
+
+  const fxQuickInput = document.getElementById('fxQuickInput');
+  if(fxQuickInput) fxQuickInput.onchange = async (e) => {
     let v = parseFloat(e.target.value);
     if(isNaN(v) || v <= 0) return;
     state.settings.exchangeRate = v;
@@ -493,7 +522,8 @@ function renderMain(){
     }
   };
 
-  document.getElementById('addEntryBtn').onclick = async () => {
+  const addEntryBtn = document.getElementById('addEntryBtn');
+  if(addEntryBtn) addEntryBtn.onclick = async () => {
     const date = document.getElementById('entryDate').value;
     const note = document.getElementById('entryNote').value.trim();
     const hours = parseFloat(document.getElementById('entryHours').value);
@@ -562,7 +592,8 @@ function renderMain(){
     };
   }
 
-  document.getElementById('logPaymentBtn').onclick = async () => {
+  const logPaymentBtn = document.getElementById('logPaymentBtn');
+  if(logPaymentBtn) logPaymentBtn.onclick = async () => {
     const amount = parseFloat(document.getElementById('paymentAmount').value);
     const paymentSource = document.getElementById('paymentSource').value || undefined;
     const note = document.getElementById('paymentNote').value.trim();
