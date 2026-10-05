@@ -7,24 +7,24 @@ import { mapEntry } from '../lib/mappers.js';
 
 const router = Router();
 
-async function getCurrentPeriodId() {
-  const row = (await db.execute('SELECT id FROM periods ORDER BY started_at DESC LIMIT 1')).rows[0];
+async function getCurrentPeriodId(accountId) {
+  const row = (await db.execute({ sql: 'SELECT id FROM periods WHERE account_id = ? ORDER BY started_at DESC LIMIT 1', args: [accountId] })).rows[0];
   return row ? row.id : null;
 }
 
-async function addEntry(workerId, { date, hours, note, periodId }) {
-  const worker = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ?', args: [workerId] })).rows[0];
+async function addEntry(workerId, accountId, { date, hours, note, periodId }) {
+  const worker = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ? AND account_id = ?', args: [workerId, accountId] })).rows[0];
   if (!worker) return null;
   let resolvedPeriodId = periodId;
   if (resolvedPeriodId) {
-    const period = (await db.execute({ sql: 'SELECT id FROM periods WHERE id = ?', args: [resolvedPeriodId] })).rows[0];
+    const period = (await db.execute({ sql: 'SELECT id FROM periods WHERE id = ? AND account_id = ?', args: [resolvedPeriodId, accountId] })).rows[0];
     if (!period) resolvedPeriodId = null;
   }
-  if (!resolvedPeriodId) resolvedPeriodId = await getCurrentPeriodId();
+  if (!resolvedPeriodId) resolvedPeriodId = await getCurrentPeriodId(accountId);
   const id = uid();
   await db.execute({
-    sql: 'INSERT INTO entries (id, worker_id, date, hours, note, period_id) VALUES (?, ?, ?, ?, ?, ?)',
-    args: [id, workerId, date, hours, note || '', resolvedPeriodId],
+    sql: 'INSERT INTO entries (id, worker_id, date, hours, note, period_id, account_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    args: [id, workerId, date, hours, note || '', resolvedPeriodId, accountId],
   });
   return { id, date, hours, note: note || '', paid: false, periodId: resolvedPeriodId };
 }
@@ -35,7 +35,7 @@ router.post('/entries/:workerId', requireAdmin, async (req, res) => {
   if (!parsed) {
     return res.status(400).json({ error: 'invalid date/time, or hours must be between 0 and 24' });
   }
-  const entry = await addEntry(workerId, parsed);
+  const entry = await addEntry(workerId, req.accountId, parsed);
   if (!entry) return res.status(404).json({ error: 'worker not found' });
   res.status(201).json(entry);
 });
@@ -43,8 +43,8 @@ router.post('/entries/:workerId', requireAdmin, async (req, res) => {
 router.delete('/entries/:workerId/:entryId', requireAdmin, async (req, res) => {
   const { workerId, entryId } = req.params;
   await db.execute({
-    sql: 'DELETE FROM entries WHERE id = ? AND worker_id = ?',
-    args: [entryId, workerId],
+    sql: 'DELETE FROM entries WHERE id = ? AND worker_id = ? AND account_id = ?',
+    args: [entryId, workerId, req.accountId],
   });
   res.json({ ok: true });
 });
@@ -53,8 +53,8 @@ router.put('/entries/:workerId/:entryId/paid', requireAdmin, async (req, res) =>
   const { workerId, entryId } = req.params;
   const { paid, paymentSource } = req.body || {};
   const existing = (await db.execute({
-    sql: 'SELECT * FROM entries WHERE id = ? AND worker_id = ?',
-    args: [entryId, workerId],
+    sql: 'SELECT * FROM entries WHERE id = ? AND worker_id = ? AND account_id = ?',
+    args: [entryId, workerId, req.accountId],
   })).rows[0];
   if (!existing) return res.status(404).json({ error: 'not found' });
   const source = paid && (paymentSource === 'personal' || paymentSource === 'official') ? paymentSource : null;
@@ -70,8 +70,8 @@ router.post('/entries/:workerId/mark-all-paid', requireAdmin, async (req, res) =
   const { paymentSource } = req.body || {};
   const source = paymentSource === 'personal' || paymentSource === 'official' ? paymentSource : null;
   await db.execute({
-    sql: 'UPDATE entries SET paid = 1, payment_source = ? WHERE worker_id = ? AND paid = 0',
-    args: [source, workerId],
+    sql: 'UPDATE entries SET paid = 1, payment_source = ? WHERE worker_id = ? AND account_id = ? AND paid = 0',
+    args: [source, workerId, req.accountId],
   });
   res.json({ ok: true });
 });

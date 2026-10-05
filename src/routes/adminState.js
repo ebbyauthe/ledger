@@ -6,12 +6,13 @@ import { mapSettings, mapWorker, mapEntry, mapTimerSession, mapPayment, mapPerio
 const router = Router();
 
 router.get('/state', requireAdmin, async (req, res) => {
-  const settingsRow = (await db.execute('SELECT * FROM settings WHERE id = 1')).rows[0];
-  const workerRows = (await db.execute('SELECT * FROM workers ORDER BY created_at ASC')).rows;
-  const entryRows = (await db.execute('SELECT * FROM entries ORDER BY date DESC')).rows;
-  const timerRows = (await db.execute('SELECT * FROM timer_sessions ORDER BY started_at DESC')).rows;
-  const paymentRows = (await db.execute('SELECT * FROM payments ORDER BY created_at DESC')).rows;
-  const periodRows = (await db.execute('SELECT * FROM periods ORDER BY started_at DESC')).rows;
+  const { accountId } = req;
+  const settingsRow = (await db.execute({ sql: 'SELECT * FROM settings WHERE account_id = ?', args: [accountId] })).rows[0];
+  const workerRows = (await db.execute({ sql: 'SELECT * FROM workers WHERE account_id = ? ORDER BY created_at ASC', args: [accountId] })).rows;
+  const entryRows = (await db.execute({ sql: 'SELECT * FROM entries WHERE account_id = ? ORDER BY date DESC', args: [accountId] })).rows;
+  const timerRows = (await db.execute({ sql: 'SELECT * FROM timer_sessions WHERE account_id = ? ORDER BY started_at DESC', args: [accountId] })).rows;
+  const paymentRows = (await db.execute({ sql: 'SELECT * FROM payments WHERE account_id = ? ORDER BY created_at DESC', args: [accountId] })).rows;
+  const periodRows = (await db.execute({ sql: 'SELECT * FROM periods WHERE account_id = ? ORDER BY started_at DESC', args: [accountId] })).rows;
 
   const entries = {};
   for (const row of entryRows) {

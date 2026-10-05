@@ -4,6 +4,14 @@ import { render } from './admin-render.js';
 
 /* ---------------- Admin: data mutations ---------------- */
 
+export async function loginAdmin(slug, password){
+  return api('/api/admin/login', { method: 'POST', body: { slug, password } });
+}
+
+export async function signupAdmin(name, slug, password, code){
+  return api('/api/admin/signup', { method: 'POST', body: { name, slug, password, code } });
+}
+
 export async function saveSettings(){
   state.settings = await api('/api/admin/settings', { method: 'PUT', body: state.settings });
 }

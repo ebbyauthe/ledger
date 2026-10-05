@@ -13,8 +13,8 @@ router.post('/periods', requireAdmin, async (req, res) => {
   const id = uid();
   const startedAt = Date.now();
   await db.execute({
-    sql: 'INSERT INTO periods (id, label, started_at) VALUES (?, ?, ?)',
-    args: [id, label, startedAt],
+    sql: 'INSERT INTO periods (id, label, started_at, account_id) VALUES (?, ?, ?, ?)',
+    args: [id, label, startedAt, req.accountId],
   });
   res.status(201).json({ id, label, startedAt });
 });

@@ -9,13 +9,14 @@ import { openModal, modalOpen } from './modal.js';
 import {
   saveSettings, fetchExchangeRate, addWorker, addPeriod, updateWorkerShare, resetWorkerPassword,
   addEntryAdmin, deleteEntryAdmin, setEntryPaid, markAllPaid, addPaymentAdmin, deletePaymentAdmin,
-  setTimerLogged, deleteWorker,
+  setTimerLogged, deleteWorker, loginAdmin, signupAdmin,
 } from './admin-data.js';
 
 let selectedWorkerId = null;
 let adminAuthenticated = false;
 let pollTimer = null;
 let adminWorkerTab = 'overview';
+let currentAccountSlug = null;
 
 /* ---------------- Admin: boot + polling ---------------- */
 
@@ -23,6 +24,7 @@ export async function bootAdmin(){
   try{
     const session = await api('/api/admin/session');
     adminAuthenticated = session.authenticated;
+    currentAccountSlug = session.slug || null;
   }catch(e){
     adminAuthenticated = false;
   }
@@ -55,34 +57,94 @@ function stopAdminPolling(){
   pollTimer = null;
 }
 
-function renderAdminLogin(errorMsg){
+function renderAdminLogin(mode = 'login', errorMsg){
   stopAdminPolling();
+  const isSignup = mode === 'signup';
   document.getElementById('app').innerHTML = `
     <div class="worker-view-wrap">
       <div class="worker-view-card">
-        <h2 class="wv-title">Admin sign-in</h2>
-        <p class="wv-sub">Enter the admin password to continue.</p>
+        <h2 class="wv-title">${isSignup ? 'Create a profile' : 'Admin sign-in'}</h2>
+        <p class="wv-sub">${isSignup ? 'Set up a new, fully separate business profile.' : 'Enter your business handle and password to continue.'}</p>
+        ${isSignup ? `
+        <div class="field">
+          <label>Business name</label>
+          <input type="text" id="adminSignupName" autofocus>
+        </div>
+        <div class="field">
+          <label>Business handle</label>
+          <input type="text" id="adminSignupSlug" placeholder="your-business">
+          <div class="hint">Your worker link will be .../w/your-handle</div>
+        </div>
+        <div class="field">
+          <label>Invite code</label>
+          <input type="password" id="adminSignupCode">
+        </div>
         <div class="field">
           <label>Password</label>
-          <input type="password" id="adminPassword" autofocus>
+          <input type="password" id="adminSignupPassword">
+        </div>
+        <div class="field">
+          <label>Confirm password</label>
+          <input type="password" id="adminSignupConfirm">
+        </div>
+        ${errorMsg ? `<p class="error-text">${escapeHtml(errorMsg)}</p>` : ''}
+        <button class="btn-primary" id="adminSignupBtn" style="width:100%;">Create profile</button>
+        <button class="settings-toggle" id="adminModeToggle" style="margin-top:10px;">← Back to sign in</button>
+        ` : `
+        <div class="field">
+          <label>Business handle</label>
+          <input type="text" id="adminSlug" autofocus>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="adminPassword">
         </div>
         ${errorMsg ? `<p class="error-text">${escapeHtml(errorMsg)}</p>` : ''}
         <button class="btn-primary" id="adminLoginBtn" style="width:100%;">Sign in</button>
+        <button class="settings-toggle" id="adminModeToggle" style="margin-top:10px;">New business? Create a profile</button>
+        `}
       </div>
     </div>
   `;
-  const submit = async () => {
-    const password = document.getElementById('adminPassword').value;
-    try{
-      await api('/api/admin/login', { method: 'POST', body: { password } });
-      adminAuthenticated = true;
-      await loadAdminState();
-    }catch(e){
-      renderAdminLogin('Wrong password.');
-    }
-  };
-  document.getElementById('adminLoginBtn').onclick = submit;
-  document.getElementById('adminPassword').addEventListener('keydown', (e) => { if(e.key === 'Enter') submit(); });
+  document.getElementById('adminModeToggle').onclick = () => renderAdminLogin(isSignup ? 'login' : 'signup');
+
+  if(isSignup){
+    const submit = async () => {
+      const name = document.getElementById('adminSignupName').value.trim();
+      const slug = document.getElementById('adminSignupSlug').value.trim();
+      const code = document.getElementById('adminSignupCode').value;
+      const password = document.getElementById('adminSignupPassword').value;
+      const confirm = document.getElementById('adminSignupConfirm').value;
+      if(password !== confirm){
+        renderAdminLogin('signup', 'Passwords do not match.');
+        return;
+      }
+      try{
+        const session = await signupAdmin(name, slug, password, code);
+        adminAuthenticated = true;
+        currentAccountSlug = session.slug || slug;
+        await loadAdminState();
+      }catch(e){
+        renderAdminLogin('signup', e.message || 'Could not create profile.');
+      }
+    };
+    document.getElementById('adminSignupBtn').onclick = submit;
+  }else{
+    const submit = async () => {
+      const slug = document.getElementById('adminSlug').value.trim();
+      const password = document.getElementById('adminPassword').value;
+      try{
+        await loginAdmin(slug, password);
+        adminAuthenticated = true;
+        currentAccountSlug = slug;
+        await loadAdminState();
+      }catch(e){
+        renderAdminLogin('login', 'Wrong business handle or password.');
+      }
+    };
+    document.getElementById('adminLoginBtn').onclick = submit;
+    document.getElementById('adminPassword').addEventListener('keydown', (e) => { if(e.key === 'Enter') submit(); });
+  }
 }
 
 /* ---------------- Admin: rendering ---------------- */
@@ -121,7 +183,7 @@ export function render(){
         <ul class="worker-list" id="workerList"></ul>
         <button class="add-worker-btn" id="addWorkerBtn">+ Add worker</button>
         <button class="settings-toggle" id="settingsToggle">Rate, tax &amp; exchange settings</button>
-        <a class="settings-toggle" href="/" target="_blank" rel="noopener">Open worker view ↗</a>
+        <a class="settings-toggle" href="/w/${encodeURIComponent(currentAccountSlug || 'default')}" target="_blank" rel="noopener">Open worker view ↗</a>
         <button class="settings-toggle" id="logoutBtn">Log out</button>
       </div>
       <div class="main" id="main"></div>
@@ -207,6 +269,7 @@ function wireStaticButtons(){
   document.getElementById('logoutBtn').onclick = async () => {
     try{ await api('/api/admin/logout', { method: 'POST' }); }catch(e){}
     adminAuthenticated = false;
+    currentAccountSlug = null;
     renderAdminLogin();
   };
 

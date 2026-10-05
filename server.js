@@ -26,14 +26,23 @@ app.use(helmet({
 }));
 app.use(express.json());
 app.use(cookieParser());
+
+// Must be registered before express.static, whose default index.html-serving behavior for bare
+// "/" would otherwise win the route match before this redirect is ever reached.
+app.get('/', (req, res) => res.redirect('/w/default'));
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(apiRoutes);
 
 // ---------- App shell ----------
-// "/" is the worker-facing link Ebenezer shares. "/admin" is his own view.
+// "/w/:slug" is the worker-facing link for a given business profile. "/admin" is the owner's view.
 
 app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/w/:slug', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

@@ -8,6 +8,8 @@ let workerViewSelectedId = null;
 let workerSummary = null;
 let workerTimerTickHandle = null;
 let workerViewTab = 'overview';
+let workerViewSlug = null;
+let workerViewBadSlug = false;
 
 function clearWorkerTimerTick(){
   if(workerTimerTickHandle) clearInterval(workerTimerTickHandle);
@@ -16,7 +18,8 @@ function clearWorkerTimerTick(){
 
 /* ---------------- Worker view ---------------- */
 
-export async function bootWorkerView(){
+export async function bootWorkerView(slug){
+  workerViewSlug = slug;
   try{
     const session = await api('/api/workers/session');
     if(session && session.workerId){
@@ -29,10 +32,12 @@ export async function bootWorkerView(){
 }
 
 async function renderWorkerPicker(){
+  workerViewBadSlug = false;
   try{
-    workerNames = await api('/api/worker-names');
+    workerNames = await api(`/api/accounts/${encodeURIComponent(workerViewSlug || '')}/worker-names`);
   }catch(e){
     workerNames = [];
+    workerViewBadSlug = true;
   }
   paintWorkerPicker();
 }
@@ -46,7 +51,7 @@ function paintWorkerPicker(){
         <h2 class="wv-title">Who are you?</h2>
         <p class="wv-sub">Pick your name to see your hours and earnings.</p>
         <ul class="wv-picker">
-          ${workerNames.map(w => `<li data-id="${w.id}">${escapeHtml(w.name)}</li>`).join('') || '<li class="wv-none">No workers added yet.</li>'}
+          ${workerNames.map(w => `<li data-id="${w.id}">${escapeHtml(w.name)}</li>`).join('') || `<li class="wv-none">${workerViewBadSlug ? 'This link looks wrong — check the URL with your employer.' : 'No workers added yet.'}</li>`}
         </ul>
       </div>
     </div>

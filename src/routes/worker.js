@@ -11,8 +11,14 @@ const router = Router();
 // ---------- Public worker-facing routes ----------
 // These never expose hourly rate, tax %, other workers' data, or Ebenezer's cut.
 
-router.get('/worker-names', async (req, res) => {
-  const rows = (await db.execute('SELECT id, name FROM workers ORDER BY name ASC')).rows;
+router.get('/accounts/:slug/worker-names', async (req, res) => {
+  const { slug } = req.params;
+  const account = (await db.execute({ sql: 'SELECT id FROM accounts WHERE slug = ?', args: [slug] })).rows[0];
+  if (!account) return res.status(404).json({ error: 'not found' });
+  const rows = (await db.execute({
+    sql: 'SELECT id, name FROM workers WHERE account_id = ? ORDER BY name ASC',
+    args: [account.id],
+  })).rows;
   res.json(rows.map(r => ({ id: r.id, name: r.name })));
 });
 
@@ -84,10 +90,10 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
   const { id } = req.params;
   const workerRow = (await db.execute({ sql: 'SELECT * FROM workers WHERE id = ?', args: [id] })).rows[0];
   if (!workerRow) return res.status(404).json({ error: 'not found' });
-  const settingsRow = (await db.execute('SELECT * FROM settings WHERE id = 1')).rows[0];
+  const settingsRow = (await db.execute({ sql: 'SELECT * FROM settings WHERE account_id = ?', args: [workerRow.account_id] })).rows[0];
   const entryRows = (await db.execute({
-    sql: 'SELECT * FROM entries WHERE worker_id = ? ORDER BY date DESC',
-    args: [id],
+    sql: 'SELECT * FROM entries WHERE worker_id = ? AND account_id = ? ORDER BY date DESC',
+    args: [id, workerRow.account_id],
   })).rows;
 
   const rate = settingsRow.rate;
@@ -115,7 +121,10 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
   const timerSessions = timerRows.map(mapTimerSession);
   const runningTimer = timerSessions.find(t => !t.endedAt) || null;
 
-  const periodRows = (await db.execute('SELECT * FROM periods ORDER BY started_at DESC')).rows;
+  const periodRows = (await db.execute({
+    sql: 'SELECT * FROM periods WHERE account_id = ? ORDER BY started_at DESC',
+    args: [workerRow.account_id],
+  })).rows;
 
   res.json({
     id: workerRow.id,
@@ -138,10 +147,15 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
 router.post('/workers/:id/timer/start', requireWorkerSession, async (req, res) => {
   const { id } = req.params;
   const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+  const workerRow = (await db.execute({ sql: 'SELECT account_id FROM workers WHERE id = ?', args: [id] })).rows[0];
+  if (!workerRow) return res.status(404).json({ error: 'not found' });
   // Only one worker can be clocked in at a time across the whole team, not just one each —
-  // so this checks globally rather than scoping to this worker's own sessions. Admin can
+  // so this checks across the account rather than scoping to this worker's own sessions. Admin can
   // still force-stop a stuck/forgotten timer via the admin Timer log to unblock everyone else.
-  const running = (await db.execute('SELECT worker_id FROM timer_sessions WHERE ended_at IS NULL')).rows[0];
+  const running = (await db.execute({
+    sql: 'SELECT worker_id FROM timer_sessions WHERE account_id = ? AND ended_at IS NULL',
+    args: [workerRow.account_id],
+  })).rows[0];
   if (running) {
     return res.status(409).json({
       error: running.worker_id === id ? 'timer already running' : 'someone else is already clocked in',
@@ -150,17 +164,19 @@ router.post('/workers/:id/timer/start', requireWorkerSession, async (req, res) =
   const sessionId = uid();
   const startedAt = Date.now();
   await db.execute({
-    sql: 'INSERT INTO timer_sessions (id, worker_id, started_at, note) VALUES (?, ?, ?, ?)',
-    args: [sessionId, id, startedAt, note],
+    sql: 'INSERT INTO timer_sessions (id, worker_id, started_at, note, account_id) VALUES (?, ?, ?, ?, ?)',
+    args: [sessionId, id, startedAt, note, workerRow.account_id],
   });
   res.status(201).json({ id: sessionId, startedAt, endedAt: null, note });
 });
 
 router.post('/workers/:id/timer/stop', requireWorkerSession, async (req, res) => {
   const { id } = req.params;
+  const workerRow = (await db.execute({ sql: 'SELECT account_id FROM workers WHERE id = ?', args: [id] })).rows[0];
+  if (!workerRow) return res.status(404).json({ error: 'not found' });
   const running = (await db.execute({
-    sql: 'SELECT * FROM timer_sessions WHERE worker_id = ? AND ended_at IS NULL',
-    args: [id],
+    sql: 'SELECT * FROM timer_sessions WHERE worker_id = ? AND account_id = ? AND ended_at IS NULL',
+    args: [id, workerRow.account_id],
   })).rows[0];
   if (!running) return res.status(404).json({ error: 'no timer running' });
   const endedAt = Date.now();

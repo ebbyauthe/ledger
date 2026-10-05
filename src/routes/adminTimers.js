@@ -10,8 +10,8 @@ const router = Router();
 router.post('/timers/:workerId/:sessionId/stop', requireAdmin, async (req, res) => {
   const { workerId, sessionId } = req.params;
   const existing = (await db.execute({
-    sql: 'SELECT * FROM timer_sessions WHERE id = ? AND worker_id = ?',
-    args: [sessionId, workerId],
+    sql: 'SELECT * FROM timer_sessions WHERE id = ? AND worker_id = ? AND account_id = ?',
+    args: [sessionId, workerId, req.accountId],
   })).rows[0];
   if (!existing) return res.status(404).json({ error: 'not found' });
   if (existing.ended_at) return res.json(mapTimerSession(existing));
@@ -26,8 +26,8 @@ router.put('/timers/:workerId/:sessionId/logged', requireAdmin, async (req, res)
   const { workerId, sessionId } = req.params;
   const { logged } = req.body || {};
   const existing = (await db.execute({
-    sql: 'SELECT * FROM timer_sessions WHERE id = ? AND worker_id = ?',
-    args: [sessionId, workerId],
+    sql: 'SELECT * FROM timer_sessions WHERE id = ? AND worker_id = ? AND account_id = ?',
+    args: [sessionId, workerId, req.accountId],
   })).rows[0];
   if (!existing) return res.status(404).json({ error: 'not found' });
   await db.execute({ sql: 'UPDATE timer_sessions SET logged = ? WHERE id = ?', args: [logged ? 1 : 0, sessionId] });
@@ -37,8 +37,8 @@ router.put('/timers/:workerId/:sessionId/logged', requireAdmin, async (req, res)
 router.delete('/timers/:workerId/:sessionId', requireAdmin, async (req, res) => {
   const { workerId, sessionId } = req.params;
   await db.execute({
-    sql: 'DELETE FROM timer_sessions WHERE id = ? AND worker_id = ?',
-    args: [sessionId, workerId],
+    sql: 'DELETE FROM timer_sessions WHERE id = ? AND worker_id = ? AND account_id = ?',
+    args: [sessionId, workerId, req.accountId],
   });
   res.json({ ok: true });
 });

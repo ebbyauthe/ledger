@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { db } from '../db/client.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
-import { ADMIN_PASSWORD } from '../config.js';
-import { uid, generatePassword, hashPassword, safeEqual } from '../lib/auth.js';
+import { uid, generatePassword, hashPassword, verifyPassword } from '../lib/auth.js';
 
 const router = Router();
 
 router.post('/workers', requireAdmin, async (req, res) => {
+  const { accountId } = req;
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   if (!name) return res.status(400).json({ error: 'name required' });
   let share = Number(req.body?.sharePercent);
@@ -16,15 +16,16 @@ router.post('/workers', requireAdmin, async (req, res) => {
   const createdAt = Date.now();
   const password = generatePassword();
   await db.execute({
-    sql: 'INSERT INTO workers (id, name, share_percent, created_at, password_hash) VALUES (?, ?, ?, ?, ?)',
-    args: [id, name, share, createdAt, hashPassword(password)],
+    sql: 'INSERT INTO workers (id, name, share_percent, created_at, password_hash, account_id) VALUES (?, ?, ?, ?, ?, ?)',
+    args: [id, name, share, createdAt, hashPassword(password), accountId],
   });
   res.status(201).json({ id, name, sharePercent: share, createdAt, password });
 });
 
 router.post('/workers/:id/reset-password', requireAdmin, async (req, res) => {
+  const { accountId } = req;
   const { id } = req.params;
-  const existing = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ?', args: [id] })).rows[0];
+  const existing = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ? AND account_id = ?', args: [id, accountId] })).rows[0];
   if (!existing) return res.status(404).json({ error: 'not found' });
   const password = generatePassword();
   await db.execute({
@@ -36,8 +37,9 @@ router.post('/workers/:id/reset-password', requireAdmin, async (req, res) => {
 });
 
 router.put('/workers/:id', requireAdmin, async (req, res) => {
+  const { accountId } = req;
   const { id } = req.params;
-  const existing = (await db.execute({ sql: 'SELECT * FROM workers WHERE id = ?', args: [id] })).rows[0];
+  const existing = (await db.execute({ sql: 'SELECT * FROM workers WHERE id = ? AND account_id = ?', args: [id, accountId] })).rows[0];
   if (!existing) return res.status(404).json({ error: 'not found' });
   let share = Number(req.body?.sharePercent);
   if (!Number.isFinite(share)) share = existing.share_percent;
@@ -51,16 +53,19 @@ router.put('/workers/:id', requireAdmin, async (req, res) => {
 });
 
 router.delete('/workers/:id', requireAdmin, async (req, res) => {
+  const { accountId } = req;
   const { id } = req.params;
   const { password } = req.body || {};
-  if (typeof password !== 'string' || !safeEqual(password, ADMIN_PASSWORD)) {
+  const account = (await db.execute({ sql: 'SELECT password_hash FROM accounts WHERE id = ?', args: [accountId] })).rows[0];
+  if (typeof password !== 'string' || !account || !verifyPassword(password, account.password_hash)) {
     return res.status(401).json({ error: 'wrong password' });
   }
-  const existing = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ?', args: [id] })).rows[0];
+  const existing = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ? AND account_id = ?', args: [id, accountId] })).rows[0];
   if (!existing) return res.status(404).json({ error: 'not found' });
   await db.execute({ sql: 'DELETE FROM entries WHERE worker_id = ?', args: [id] });
   await db.execute({ sql: 'DELETE FROM worker_sessions WHERE worker_id = ?', args: [id] });
   await db.execute({ sql: 'DELETE FROM timer_sessions WHERE worker_id = ?', args: [id] });
+  await db.execute({ sql: 'DELETE FROM payments WHERE worker_id = ?', args: [id] });
   await db.execute({ sql: 'DELETE FROM workers WHERE id = ?', args: [id] });
   res.json({ ok: true });
 });

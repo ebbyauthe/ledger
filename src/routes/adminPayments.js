@@ -10,8 +10,9 @@ const router = Router();
 // (or as close as possible without exceeding), instead of the admin clicking each one.
 // Still keeps a running payment-log record regardless of how many entries could be matched.
 router.post('/payments/:workerId', requireAdmin, async (req, res) => {
+  const { accountId } = req;
   const { workerId } = req.params;
-  const worker = (await db.execute({ sql: 'SELECT * FROM workers WHERE id = ?', args: [workerId] })).rows[0];
+  const worker = (await db.execute({ sql: 'SELECT * FROM workers WHERE id = ? AND account_id = ?', args: [workerId, accountId] })).rows[0];
   if (!worker) return res.status(404).json({ error: 'worker not found' });
   const { amount, paymentSource, note } = req.body || {};
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
@@ -20,10 +21,10 @@ router.post('/payments/:workerId', requireAdmin, async (req, res) => {
   const source = paymentSource === 'personal' || paymentSource === 'official' ? paymentSource : null;
   const cleanNote = typeof note === 'string' ? note.trim().slice(0, 500) : '';
 
-  const settingsRow = (await db.execute('SELECT * FROM settings WHERE id = 1')).rows[0];
+  const settingsRow = (await db.execute({ sql: 'SELECT * FROM settings WHERE account_id = ?', args: [accountId] })).rows[0];
   const unpaidRows = (await db.execute({
-    sql: 'SELECT * FROM entries WHERE worker_id = ? AND paid = 0 ORDER BY date ASC',
-    args: [workerId],
+    sql: 'SELECT * FROM entries WHERE worker_id = ? AND account_id = ? AND paid = 0 ORDER BY date ASC',
+    args: [workerId, accountId],
   })).rows;
   const items = unpaidRows.map(row => ({
     id: row.id,
@@ -43,8 +44,8 @@ router.post('/payments/:workerId', requireAdmin, async (req, res) => {
   const id = uid();
   const createdAt = Date.now();
   await db.execute({
-    sql: 'INSERT INTO payments (id, worker_id, amount, payment_source, note, created_at, matched_entry_ids) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    args: [id, workerId, amount, source, cleanNote, createdAt, JSON.stringify(matchedIds)],
+    sql: 'INSERT INTO payments (id, worker_id, amount, payment_source, note, created_at, matched_entry_ids, account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [id, workerId, amount, source, cleanNote, createdAt, JSON.stringify(matchedIds), accountId],
   });
 
   res.status(201).json({
@@ -58,10 +59,11 @@ router.post('/payments/:workerId', requireAdmin, async (req, res) => {
 // Deleting a payment reverts whichever entries it had auto-marked as paid back to unpaid,
 // so the paid/unpaid picture stays consistent with the payment log.
 router.delete('/payments/:workerId/:paymentId', requireAdmin, async (req, res) => {
+  const { accountId } = req;
   const { workerId, paymentId } = req.params;
   const payment = (await db.execute({
-    sql: 'SELECT matched_entry_ids FROM payments WHERE id = ? AND worker_id = ?',
-    args: [paymentId, workerId],
+    sql: 'SELECT matched_entry_ids FROM payments WHERE id = ? AND worker_id = ? AND account_id = ?',
+    args: [paymentId, workerId, accountId],
   })).rows[0];
   const revertedEntryIds = payment ? parseMatchedEntryIds(payment.matched_entry_ids) : [];
   for (const entryId of revertedEntryIds) {
@@ -71,8 +73,8 @@ router.delete('/payments/:workerId/:paymentId', requireAdmin, async (req, res) =
     });
   }
   await db.execute({
-    sql: 'DELETE FROM payments WHERE id = ? AND worker_id = ?',
-    args: [paymentId, workerId],
+    sql: 'DELETE FROM payments WHERE id = ? AND worker_id = ? AND account_id = ?',
+    args: [paymentId, workerId, accountId],
   });
   res.json({ ok: true, revertedEntryIds });
 });

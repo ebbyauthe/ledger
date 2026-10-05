@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import { db } from './client.js';
+import { ADMIN_PASSWORD } from '../config.js';
+import { uid, hashPassword, generatePassword } from '../lib/auth.js';
 
 export async function migrate() {
   await db.execute('PRAGMA foreign_keys = ON');
@@ -89,6 +91,18 @@ export async function migrate() {
     await db.execute('ALTER TABLE payments ADD COLUMN matched_entry_ids TEXT');
   }
 
+  // Business profiles. Each one owns its own workers, settings, periods, and the sessions/
+  // entries/timers/payments that hang off them — see the account_id backfill below.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
   const workerCols = (await db.execute('PRAGMA table_info(workers)')).rows.map(r => r.name);
   if (!workerCols.includes('password_hash')) {
     await db.execute('ALTER TABLE workers ADD COLUMN password_hash TEXT');
@@ -119,23 +133,96 @@ export async function migrate() {
     await db.execute('ALTER TABLE timer_sessions ADD COLUMN logged INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Ownership column for multi-tenancy. Nullable at the schema level (SQLite can't add a
+  // NOT NULL FK column to a non-empty table) — the one-time bootstrap below backfills every
+  // existing row, and every INSERT from here on always sets it explicitly.
+  for (const table of ['workers', 'periods', 'admin_sessions', 'entries', 'timer_sessions', 'payments']) {
+    const cols = (await db.execute(`PRAGMA table_info(${table})`)).rows.map(r => r.name);
+    if (!cols.includes('account_id')) {
+      await db.execute(`ALTER TABLE ${table} ADD COLUMN account_id TEXT REFERENCES accounts(id) ON DELETE CASCADE`);
+    }
+  }
+
+  // One-time bootstrap: the first time accounts exist, nothing has an owner yet. Create a
+  // "default" account from the current ADMIN_PASSWORD so the existing admin login and the
+  // existing workers' bookmarked link keep working unchanged, then backfill every pre-existing
+  // row onto it — including admin_sessions, so a live session cookie doesn't get silently
+  // invalidated the moment this deploys.
+  const accountCount = (await db.execute('SELECT COUNT(*) AS c FROM accounts')).rows[0].c;
+  let defaultAccountId = null;
+  if (accountCount === 0) {
+    defaultAccountId = uid();
+    await db.execute({
+      sql: 'INSERT INTO accounts (id, name, slug, password_hash, created_at) VALUES (?, ?, ?, ?, ?)',
+      args: [defaultAccountId, 'My Business', 'default', hashPassword(ADMIN_PASSWORD || generatePassword()), Date.now()],
+    });
+    for (const table of ['workers', 'periods', 'admin_sessions', 'entries', 'timer_sessions', 'payments']) {
+      await db.execute({
+        sql: `UPDATE ${table} SET account_id = ? WHERE account_id IS NULL`,
+        args: [defaultAccountId],
+      });
+    }
+  }
+
+  // settings' `id INTEGER PRIMARY KEY CHECK (id = 1)` makes one-row-per-account structurally
+  // impossible to reach via ALTER, so it needs a real rebuild rather than a column add. Safe
+  // to re-run if a retry lands mid-way (see migrateWithRetry in server.js).
+  const settingsCols = (await db.execute('PRAGMA table_info(settings)')).rows.map(r => r.name);
+  if (!settingsCols.includes('account_id')) {
+    const legacyAccountId = defaultAccountId
+      || (await db.execute('SELECT id FROM accounts ORDER BY created_at ASC LIMIT 1')).rows[0]?.id
+      || null;
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS settings_new (
+        account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+        rate REAL NOT NULL DEFAULT 21.3,
+        tax_percent REAL NOT NULL DEFAULT 20,
+        exchange_rate REAL,
+        exchange_manual INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+
+    const oldSettings = (await db.execute('SELECT * FROM settings WHERE id = 1')).rows[0];
+    const alreadyMigrated = legacyAccountId
+      ? (await db.execute({ sql: 'SELECT 1 FROM settings_new WHERE account_id = ?', args: [legacyAccountId] })).rows[0]
+      : null;
+    if (legacyAccountId && !alreadyMigrated) {
+      if (oldSettings) {
+        await db.execute({
+          sql: 'INSERT INTO settings_new (account_id, rate, tax_percent, exchange_rate, exchange_manual) VALUES (?, ?, ?, ?, ?)',
+          args: [legacyAccountId, oldSettings.rate, oldSettings.tax_percent, oldSettings.exchange_rate, oldSettings.exchange_manual],
+        });
+      } else {
+        // Fresh install: there was never a pre-existing singleton settings row to carry
+        // forward (the default account just got bootstrapped above), so give it one with
+        // this table's own defaults instead of leaving it with none.
+        await db.execute({ sql: 'INSERT INTO settings_new (account_id) VALUES (?)', args: [legacyAccountId] });
+      }
+    }
+
+    await db.execute('DROP TABLE settings');
+    await db.execute('ALTER TABLE settings_new RENAME TO settings');
+  }
+
   // One-time backfill: the first time periods are introduced, everything logged so far
   // predates the feature and was worked in July, so it becomes the initial "July 2026" period.
+  // (In production this is already permanently inert — periodCount is never 0 there anymore.
+  // On a genuinely fresh install it runs in the same pass as the account bootstrap above, so
+  // defaultAccountId is already set; fall back to the oldest account just in case.)
   const periodCount = (await db.execute('SELECT COUNT(*) AS c FROM periods')).rows[0].c;
   if (periodCount === 0) {
     const initialPeriodId = crypto.randomBytes(6).toString('hex');
+    const ownerAccountId = defaultAccountId
+      || (await db.execute('SELECT id FROM accounts ORDER BY created_at ASC LIMIT 1')).rows[0]?.id
+      || null;
     await db.execute({
-      sql: 'INSERT INTO periods (id, label, started_at) VALUES (?, ?, ?)',
-      args: [initialPeriodId, 'July 2026', Date.now()],
+      sql: 'INSERT INTO periods (id, label, started_at, account_id) VALUES (?, ?, ?, ?)',
+      args: [initialPeriodId, 'July 2026', Date.now(), ownerAccountId],
     });
     await db.execute({
       sql: 'UPDATE entries SET period_id = ? WHERE period_id IS NULL',
       args: [initialPeriodId],
     });
   }
-
-  await db.execute(`
-    INSERT OR IGNORE INTO settings (id, rate, tax_percent, exchange_rate, exchange_manual)
-    VALUES (1, 21.3, 20, NULL, 0)
-  `);
 }

@@ -1,10 +1,11 @@
 import { bootAdmin } from './admin-render.js';
 import { bootWorkerView } from './worker-render.js';
 
-const mode = location.pathname.replace(/\/+$/, '') === '/admin' ? 'admin' : 'worker';
+const path = location.pathname.replace(/\/+$/, '');
+const workerMatch = path.match(/^\/w\/([^/]+)$/);
 
-if(mode === 'admin'){
+if(path === '/admin'){
   bootAdmin();
 }else{
-  bootWorkerView();
+  bootWorkerView(workerMatch ? decodeURIComponent(workerMatch[1]) : null);
 }
