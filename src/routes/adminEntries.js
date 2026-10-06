@@ -76,15 +76,20 @@ router.put('/entries/:workerId/:entryId/paid', requireAdmin, async (req, res) =>
   res.json(mapEntry({ ...existing, paid: paid ? 1 : 0, payment_source: source }));
 });
 
+// periodId is optional — when given, only that period's entries for this worker are marked
+// paid (e.g. "mark this month as paid"), instead of every unpaid entry the worker has.
 router.post('/entries/:workerId/mark-all-paid', requireAdmin, async (req, res) => {
   const { workerId } = req.params;
-  const { paymentSource } = req.body || {};
+  const { paymentSource, periodId } = req.body || {};
   const source = paymentSource === 'personal' || paymentSource === 'official' ? paymentSource : null;
-  await db.execute({
-    sql: 'UPDATE entries SET paid = 1, payment_source = ? WHERE worker_id = ? AND account_id = ? AND paid = 0',
-    args: [source, workerId, req.accountId],
-  });
-  res.json({ ok: true });
+  let sql = 'UPDATE entries SET paid = 1, payment_source = ? WHERE worker_id = ? AND account_id = ? AND paid = 0';
+  const args = [source, workerId, req.accountId];
+  if (typeof periodId === 'string' && periodId) {
+    sql += ' AND period_id = ?';
+    args.push(periodId);
+  }
+  await db.execute({ sql, args });
+  res.json({ ok: true, periodId: periodId || null });
 });
 
 export default router;

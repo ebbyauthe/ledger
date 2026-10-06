@@ -229,6 +229,12 @@ export async function migrate() {
     await db.execute('ALTER TABLE entries ADD COLUMN job_id TEXT REFERENCES jobs(id)');
   }
 
+  // Workers pick which job a timer session is for when they clock in, same as entries.
+  const timerCols2 = (await db.execute('PRAGMA table_info(timer_sessions)')).rows.map(r => r.name);
+  if (!timerCols2.includes('job_id')) {
+    await db.execute('ALTER TABLE timer_sessions ADD COLUMN job_id TEXT REFERENCES jobs(id)');
+  }
+
   // Step 1: every account that doesn't have a job yet gets one "General" job, seeded from that
   // account's current settings.rate/tax_percent (read before those columns get dropped below).
   // Self-guarding via the LEFT JOIN — an account that already has a job is excluded, so this is
@@ -255,6 +261,11 @@ export async function migrate() {
   await db.execute(`
     UPDATE entries SET job_id = (
       SELECT id FROM jobs WHERE jobs.account_id = entries.account_id ORDER BY created_at ASC LIMIT 1
+    ) WHERE job_id IS NULL AND account_id IS NOT NULL
+  `);
+  await db.execute(`
+    UPDATE timer_sessions SET job_id = (
+      SELECT id FROM jobs WHERE jobs.account_id = timer_sessions.account_id ORDER BY created_at ASC LIMIT 1
     ) WHERE job_id IS NULL AND account_id IS NOT NULL
   `);
 

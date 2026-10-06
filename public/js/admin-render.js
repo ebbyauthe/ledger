@@ -379,10 +379,14 @@ function renderMain(){
       ${entries.length ? entryGroups.map(g => {
         const groupHours = g.entries.reduce((s,e) => s + e.hours, 0);
         const groupWorkerPay = g.entries.reduce((s,e) => s + calcEntryRow(e, worker.sharePercent).workerPay, 0);
+        const groupHasUnpaid = g.entries.some(e => !e.paid);
         return `
-      <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;display:flex;justify-content:space-between;align-items:center;">
+      <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
         <span>${escapeHtml(g.period.label)}</span>
-        <span style="text-transform:none;letter-spacing:normal;">${groupHours.toFixed(2)}h · ${fmtCAD(groupWorkerPay)}</span>
+        <span style="display:flex;align-items:center;gap:10px;text-transform:none;letter-spacing:normal;">
+          ${groupHours.toFixed(2)}h · ${fmtCAD(groupWorkerPay)}
+          ${groupHasUnpaid && g.period.id !== '__none__' ? `<button class="settings-toggle mark-period-paid-btn" data-period-id="${g.period.id}">Mark month as paid</button>` : ''}
+        </span>
       </div>
       <table>
         <thead>
@@ -476,11 +480,12 @@ function renderMain(){
       </div>
       ${timerSessions.length ? `
       <table>
-        <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th>Added</th><th></th></tr></thead>
+        <thead><tr><th>Start</th><th>Stop</th><th>Job</th><th>Duration</th><th>Note</th><th>Added</th><th></th></tr></thead>
         <tbody>
           ${timerSessions.map(t => `<tr>
             <td data-label="Start">${fmtWhenCell(t.startedAt)}</td>
             <td data-label="Stop">${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
+            <td data-label="Job">${escapeHtml(findJob(t.jobId)?.name || '—')}</td>
             <td data-label="Duration">${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
             <td class="note-col" data-label="Note">${escapeHtml(t.note || '')}</td>
             <td data-label="Added"><input type="checkbox" class="timer-logged-checkbox" data-id="${t.id}" ${t.logged ? 'checked' : ''} title="I've checked this session and added its hours as a work hour entry"></td>
@@ -614,6 +619,36 @@ function renderMain(){
       }
     };
   }
+
+  main.querySelectorAll('.mark-period-paid-btn').forEach(btn => {
+    btn.onclick = () => {
+      const periodId = btn.dataset.periodId;
+      const period = state.periods.find(p => p.id === periodId);
+      const label = period ? period.label : 'this period';
+      openModal(`
+        <h3>Mark ${escapeHtml(label)} as paid?</h3>
+        <p style="font-size:13px;color:var(--ink-soft);margin:0 0 14px;">Marks every unpaid hour entry for ${escapeHtml(worker.name)} in this period as paid.</p>
+        <div class="field">
+          <label>Payment source (optional)</label>
+          <select id="modalMarkPeriodPaidSource">
+            <option value="">Not specified</option>
+            <option value="personal">Personal</option>
+            <option value="official">Official</option>
+          </select>
+        </div>
+      `, async () => {
+        const paymentSource = document.getElementById('modalMarkPeriodPaidSource').value || undefined;
+        try{
+          await markAllPaid(worker.id, paymentSource, periodId);
+          render();
+          return true;
+        }catch(e){
+          alert('Could not mark period as paid: ' + e.message);
+          return false;
+        }
+      }, 'Mark paid');
+    };
+  });
 
   const logPaymentBtn = document.getElementById('logPaymentBtn');
   if(logPaymentBtn) logPaymentBtn.onclick = async () => {

@@ -132,6 +132,13 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
     args: [workerRow.account_id],
   })).rows;
 
+  const jobRows = (await db.execute({
+    sql: 'SELECT id, name FROM jobs WHERE account_id = ? ORDER BY created_at ASC',
+    args: [workerRow.account_id],
+  })).rows;
+  const jobsById = new Map(jobRows.map(j => [j.id, j.name]));
+  const timerSessionsWithJob = timerSessions.map(t => ({ ...t, jobName: jobsById.get(t.jobId) || null }));
+
   res.json({
     id: workerRow.id,
     name: workerRow.name,
@@ -141,9 +148,10 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
     unpaidWorkerPay,
     unpaidWorkerPayNGN,
     entries,
-    timerSessions,
-    runningTimer,
+    timerSessions: timerSessionsWithJob,
+    runningTimer: runningTimer ? { ...runningTimer, jobName: jobsById.get(runningTimer.jobId) || null } : null,
     periods: periodRows.map(mapPeriod),
+    jobs: jobRows.map(j => ({ id: j.id, name: j.name })),
   });
 });
 
@@ -167,13 +175,23 @@ router.post('/workers/:id/timer/start', requireWorkerSession, async (req, res) =
       error: running.worker_id === id ? 'timer already running' : 'someone else is already clocked in',
     });
   }
+  const requestedJobId = typeof req.body?.jobId === 'string' ? req.body.jobId : null;
+  let jobId = null;
+  if (requestedJobId) {
+    const job = (await db.execute({ sql: 'SELECT id FROM jobs WHERE id = ? AND account_id = ?', args: [requestedJobId, workerRow.account_id] })).rows[0];
+    if (job) jobId = job.id;
+  }
+  if (!jobId) {
+    const defaultJob = (await db.execute({ sql: 'SELECT id FROM jobs WHERE account_id = ? ORDER BY created_at DESC LIMIT 1', args: [workerRow.account_id] })).rows[0];
+    jobId = defaultJob ? defaultJob.id : null;
+  }
   const sessionId = uid();
   const startedAt = Date.now();
   await db.execute({
-    sql: 'INSERT INTO timer_sessions (id, worker_id, started_at, note, account_id) VALUES (?, ?, ?, ?, ?)',
-    args: [sessionId, id, startedAt, note, workerRow.account_id],
+    sql: 'INSERT INTO timer_sessions (id, worker_id, started_at, note, account_id, job_id) VALUES (?, ?, ?, ?, ?, ?)',
+    args: [sessionId, id, startedAt, note, workerRow.account_id, jobId],
   });
-  res.status(201).json({ id: sessionId, startedAt, endedAt: null, note });
+  res.status(201).json({ id: sessionId, startedAt, endedAt: null, note, jobId });
 });
 
 router.post('/workers/:id/timer/stop', requireWorkerSession, async (req, res) => {

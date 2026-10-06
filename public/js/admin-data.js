@@ -88,10 +88,14 @@ export async function setEntryPaid(workerId, entryId, paid, paymentSource){
   if(idx !== -1) list[idx] = updated;
 }
 
-export async function markAllPaid(workerId, paymentSource){
-  await api(`/api/admin/entries/${workerId}/mark-all-paid`, { method: 'POST', body: { paymentSource } });
+export async function markAllPaid(workerId, paymentSource, periodId){
+  await api(`/api/admin/entries/${workerId}/mark-all-paid`, { method: 'POST', body: { paymentSource, periodId } });
   const list = state.entries[workerId] || [];
-  list.forEach(e => { e.paid = true; e.paymentSource = paymentSource; });
+  list.forEach(e => {
+    if(periodId && e.periodId !== periodId) return;
+    e.paid = true;
+    e.paymentSource = paymentSource;
+  });
 }
 
 export async function addPaymentAdmin(workerId, payment){

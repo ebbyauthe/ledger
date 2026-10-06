@@ -145,12 +145,16 @@ function paintWorkerSummary(){
             ${w.runningTimer ? `
               <button class="btn-primary" id="timerStopBtn" style="background:var(--rust);">Stop timer</button>
             ` : `
-              <div style="display:flex;gap:8px;align-items:center;flex:1;min-width:200px;">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1;min-width:200px;">
+                <select id="timerJobSelect" title="Which job is this for?">
+                  ${(w.jobs || []).map(j => `<option value="${j.id}">${escapeHtml(j.name)}</option>`).join('')}
+                </select>
                 <input type="text" id="timerNoteInput" class="timer-note-input" placeholder="What are you working on? (optional)">
                 <button class="btn-primary" id="timerStartBtn">Start timer</button>
               </div>
             `}
           </div>
+          ${w.runningTimer && w.runningTimer.jobName ? `<div class="fx-note">Job: ${escapeHtml(w.runningTimer.jobName)}</div>` : ''}
           ${w.runningTimer && w.runningTimer.note ? `<div class="fx-note">${escapeHtml(w.runningTimer.note)}</div>` : ''}
           <p class="fx-note" style="margin-top:8px;">This timer is just a log for Ebenezer — it doesn't add to your logged hours or pay.</p>
         </div>
@@ -256,11 +260,12 @@ function paintWorkerSummary(){
         <div class="entries-card">
           ${w.timerSessions.length ? `
           <table>
-            <thead><tr><th>Start</th><th>Stop</th><th>Duration</th><th>Note</th><th>Added to hours</th></tr></thead>
+            <thead><tr><th>Start</th><th>Stop</th><th>Job</th><th>Duration</th><th>Note</th><th>Added to hours</th></tr></thead>
             <tbody>
               ${w.timerSessions.map(t => `<tr>
                 <td data-label="Start">${fmtWhenCell(t.startedAt)}</td>
                 <td data-label="Stop">${t.endedAt ? fmtWhenCell(t.endedAt) : '<span class="timer-running-tag">running…</span>'}</td>
+                <td data-label="Job">${escapeHtml(t.jobName || '—')}</td>
                 <td class="timer-row-duration" data-label="Duration" data-started="${t.startedAt}" data-ended="${t.endedAt || ''}">${fmtDuration((t.endedAt || Date.now()) - t.startedAt)}</td>
                 <td class="note-col" data-label="Note">${escapeHtml(t.note || '')}</td>
                 <td data-label="Added to hours">${t.logged ? '✓' : '—'}</td>
@@ -291,9 +296,11 @@ function paintWorkerSummary(){
   if(timerStartBtn){
     timerStartBtn.onclick = async () => {
       const note = document.getElementById('timerNoteInput').value.trim();
+      const jobSelect = document.getElementById('timerJobSelect');
+      const jobId = jobSelect ? jobSelect.value : undefined;
       timerStartBtn.disabled = true;
       try{
-        await api(`/api/workers/${w.id}/timer/start`, { method: 'POST', body: { note } });
+        await api(`/api/workers/${w.id}/timer/start`, { method: 'POST', body: { note, jobId } });
         await loadWorkerSummary();
       }catch(e){
         alert('Could not start timer: ' + e.message);

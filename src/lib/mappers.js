@@ -45,6 +45,7 @@ export function mapTimerSession(row) {
     endedAt: row.ended_at ?? null,
     note: row.note || '',
     logged: !!row.logged,
+    jobId: row.job_id || null,
   };
 }
 
