@@ -145,13 +145,7 @@ function paintWorkerSummary(){
             ${w.runningTimer ? `
               <button class="btn-primary" id="timerStopBtn" style="background:var(--rust);">Stop timer</button>
             ` : `
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1;min-width:200px;">
-                <select id="timerJobSelect" title="Which job is this for?">
-                  ${(w.jobs || []).map(j => `<option value="${j.id}">${escapeHtml(j.name)}</option>`).join('')}
-                </select>
-                <input type="text" id="timerNoteInput" class="timer-note-input" placeholder="What are you working on? (optional)">
-                <button class="btn-primary" id="timerStartBtn">Start timer</button>
-              </div>
+              <button class="btn-primary" id="timerStartBtn">Start timer</button>
             `}
           </div>
           ${w.runningTimer && w.runningTimer.jobName ? `<div class="fx-note">Job: ${escapeHtml(w.runningTimer.jobName)}</div>` : ''}
@@ -294,18 +288,31 @@ function paintWorkerSummary(){
   };
   const timerStartBtn = document.getElementById('timerStartBtn');
   if(timerStartBtn){
-    timerStartBtn.onclick = async () => {
-      const note = document.getElementById('timerNoteInput').value.trim();
-      const jobSelect = document.getElementById('timerJobSelect');
-      const jobId = jobSelect ? jobSelect.value : undefined;
-      timerStartBtn.disabled = true;
-      try{
-        await api(`/api/workers/${w.id}/timer/start`, { method: 'POST', body: { note, jobId } });
-        await loadWorkerSummary();
-      }catch(e){
-        alert('Could not start timer: ' + e.message);
-        timerStartBtn.disabled = false;
-      }
+    timerStartBtn.onclick = () => {
+      openModal(`
+        <h3>Start timer</h3>
+        <div class="field">
+          <label>Which job is this for?</label>
+          <select id="modalTimerJob">
+            ${(w.jobs || []).map(j => `<option value="${j.id}">${escapeHtml(j.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>Note (optional)</label>
+          <input type="text" id="modalTimerNote" placeholder="What are you working on?" autofocus>
+        </div>
+      `, async () => {
+        const jobId = document.getElementById('modalTimerJob').value;
+        const note = document.getElementById('modalTimerNote').value.trim();
+        try{
+          await api(`/api/workers/${w.id}/timer/start`, { method: 'POST', body: { note, jobId } });
+          await loadWorkerSummary();
+          return true;
+        }catch(e){
+          alert('Could not start timer: ' + e.message);
+          return false;
+        }
+      }, 'Start timer');
     };
   }
   const timerStopBtn = document.getElementById('timerStopBtn');
