@@ -3,10 +3,32 @@ export function isValidDate(d) {
 }
 
 export function parseEntryInput(body) {
-  const { date, hours, note, periodId } = body || {};
+  const { date, hours, note, periodId, jobId } = body || {};
   if (!isValidDate(date)) return null;
   if (typeof hours !== 'number' || !Number.isFinite(hours) || hours <= 0 || hours > 24) return null;
-  return { date, hours, note, periodId: typeof periodId === 'string' ? periodId : null };
+  return {
+    date, hours, note,
+    periodId: typeof periodId === 'string' ? periodId : null,
+    jobId: typeof jobId === 'string' ? jobId : null,
+  };
+}
+
+// Shape-only validation for creating/editing a job (a client/project with its own rate & tax).
+// fxMode defaults to 'shared' (track the account's exchange rate) unless explicitly 'custom',
+// in which case a valid exchangeRate is also required.
+export function parseJobInput(body) {
+  const { name, rate, taxPercent, fxMode, exchangeRate } = body || {};
+  const cleanName = typeof name === 'string' ? name.trim().slice(0, 100) : '';
+  if (!cleanName) return null;
+  if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) return null;
+  if (typeof taxPercent !== 'number' || !Number.isFinite(taxPercent) || taxPercent < 0 || taxPercent > 100) return null;
+  const mode = fxMode === 'custom' ? 'custom' : 'shared';
+  let customRate = null;
+  if (mode === 'custom') {
+    if (typeof exchangeRate !== 'number' || !Number.isFinite(exchangeRate) || exchangeRate <= 0) return null;
+    customRate = exchangeRate;
+  }
+  return { name: cleanName, rate, taxPercent, fxMode: mode, exchangeRate: customRate };
 }
 
 // Reserved so a business handle can never collide with an existing route prefix or static asset.

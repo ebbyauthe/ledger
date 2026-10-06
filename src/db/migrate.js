@@ -205,6 +205,67 @@ export async function migrate() {
     await db.execute('ALTER TABLE settings_new RENAME TO settings');
   }
 
+  // Jobs let one worker log hours against several separate clients/projects, each with its
+  // own rate and tax %. fx_mode is 'shared' (track the account's settings.exchange_rate) or
+  // 'custom' (use this job's own exchange_rate column) — see adminJobs.js.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      rate REAL NOT NULL DEFAULT 21.3,
+      tax_percent REAL NOT NULL DEFAULT 20,
+      fx_mode TEXT NOT NULL DEFAULT 'shared',
+      exchange_rate REAL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  const entryCols2 = (await db.execute('PRAGMA table_info(entries)')).rows.map(r => r.name);
+  if (!entryCols2.includes('job_id')) {
+    // No ON DELETE CASCADE here, matching period_id — a job should never be able to silently
+    // wipe a worker's historical hour entries (there's no job-delete endpoint, but this keeps
+    // that door safe if one's ever added).
+    await db.execute('ALTER TABLE entries ADD COLUMN job_id TEXT REFERENCES jobs(id)');
+  }
+
+  // Step 1: every account that doesn't have a job yet gets one "General" job, seeded from that
+  // account's current settings.rate/tax_percent (read before those columns get dropped below).
+  // Self-guarding via the LEFT JOIN — an account that already has a job is excluded, so this is
+  // safe to re-run on every migrate() pass.
+  const accountsWithoutJobs = (await db.execute(`
+    SELECT accounts.id AS id
+    FROM accounts
+    LEFT JOIN jobs ON jobs.account_id = accounts.id
+    WHERE jobs.id IS NULL
+    GROUP BY accounts.id
+  `)).rows;
+  for (const { id: accId } of accountsWithoutJobs) {
+    const oldJobSettings = (await db.execute({ sql: 'SELECT rate, tax_percent FROM settings WHERE account_id = ?', args: [accId] })).rows[0];
+    await db.execute({
+      sql: 'INSERT INTO jobs (id, account_id, name, rate, tax_percent, fx_mode, exchange_rate, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)',
+      args: [uid(), accId, 'General', oldJobSettings?.rate ?? 21.3, oldJobSettings?.tax_percent ?? 20, 'shared', Date.now()],
+    });
+  }
+
+  // Step 2: deliberately not nested inside step 1's loop. If the process crashes between
+  // creating a job and backfilling that account's entries, step 1's LEFT JOIN would skip that
+  // account on retry (it has a job now) and its entries would stay job_id = NULL forever.
+  // Running this unconditionally every pass instead is a no-op once nothing matches.
+  await db.execute(`
+    UPDATE entries SET job_id = (
+      SELECT id FROM jobs WHERE jobs.account_id = entries.account_id ORDER BY created_at ASC LIMIT 1
+    ) WHERE job_id IS NULL AND account_id IS NOT NULL
+  `);
+
+  // rate/tax_percent now live per-job instead of once per account.
+  const settingsCols2 = (await db.execute('PRAGMA table_info(settings)')).rows.map(r => r.name);
+  if (settingsCols2.includes('rate')) await db.execute('ALTER TABLE settings DROP COLUMN rate');
+  if (settingsCols2.includes('tax_percent')) await db.execute('ALTER TABLE settings DROP COLUMN tax_percent');
+
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_jobs_account ON jobs(account_id)');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_entries_job ON entries(job_id)');
+
   // One-time backfill: the first time periods are introduced, everything logged so far
   // predates the feature and was worked in July, so it becomes the initial "July 2026" period.
   // (In production this is already permanently inert — periodCount is never 0 there anymore.

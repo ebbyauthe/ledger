@@ -237,10 +237,11 @@ function paintWorkerSummary(){
             <span style="text-transform:none;letter-spacing:normal;">${g.entries.reduce((s,e) => s + e.hours, 0).toFixed(2)}h · ${fmtCAD(g.entries.reduce((s,e) => s + e.workerPay, 0))}</span>
           </div>
           <table>
-            <thead><tr><th>Date</th><th>Hours</th><th>Earned (CAD)</th><th>Earned (₦)</th><th>Paid</th></tr></thead>
+            <thead><tr><th>Date</th><th>Job</th><th>Hours</th><th>Earned (CAD)</th><th>Earned (₦)</th><th>Paid</th></tr></thead>
             <tbody>
               ${g.entries.map(e => `<tr>
                 <td data-label="Date">${e.date}</td>
+                <td data-label="Job">${escapeHtml(e.jobName || '—')}</td>
                 <td data-label="Hours">${e.hours.toFixed(2)}</td>
                 <td data-label="Earned (CAD)">${fmtCAD(e.workerPay)}</td>
                 <td data-label="Earned (₦)">${fmtNGN(e.workerPayNGN)}</td>

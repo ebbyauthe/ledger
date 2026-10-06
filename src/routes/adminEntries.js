@@ -12,7 +12,12 @@ async function getCurrentPeriodId(accountId) {
   return row ? row.id : null;
 }
 
-async function addEntry(workerId, accountId, { date, hours, note, periodId }) {
+async function getDefaultJobId(accountId) {
+  const row = (await db.execute({ sql: 'SELECT id FROM jobs WHERE account_id = ? ORDER BY created_at DESC LIMIT 1', args: [accountId] })).rows[0];
+  return row ? row.id : null;
+}
+
+async function addEntry(workerId, accountId, { date, hours, note, periodId, jobId }) {
   const worker = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ? AND account_id = ?', args: [workerId, accountId] })).rows[0];
   if (!worker) return null;
   let resolvedPeriodId = periodId;
@@ -21,12 +26,18 @@ async function addEntry(workerId, accountId, { date, hours, note, periodId }) {
     if (!period) resolvedPeriodId = null;
   }
   if (!resolvedPeriodId) resolvedPeriodId = await getCurrentPeriodId(accountId);
+  let resolvedJobId = jobId;
+  if (resolvedJobId) {
+    const job = (await db.execute({ sql: 'SELECT id FROM jobs WHERE id = ? AND account_id = ?', args: [resolvedJobId, accountId] })).rows[0];
+    if (!job) resolvedJobId = null;
+  }
+  if (!resolvedJobId) resolvedJobId = await getDefaultJobId(accountId);
   const id = uid();
   await db.execute({
-    sql: 'INSERT INTO entries (id, worker_id, date, hours, note, period_id, account_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    args: [id, workerId, date, hours, note || '', resolvedPeriodId, accountId],
+    sql: 'INSERT INTO entries (id, worker_id, date, hours, note, period_id, account_id, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [id, workerId, date, hours, note || '', resolvedPeriodId, accountId, resolvedJobId],
   });
-  return { id, date, hours, note: note || '', paid: false, periodId: resolvedPeriodId };
+  return { id, date, hours, note: note || '', paid: false, periodId: resolvedPeriodId, jobId: resolvedJobId };
 }
 
 router.post('/entries/:workerId', requireAdmin, async (req, res) => {

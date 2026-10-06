@@ -21,14 +21,16 @@ router.post('/payments/:workerId', requireAdmin, async (req, res) => {
   const source = paymentSource === 'personal' || paymentSource === 'official' ? paymentSource : null;
   const cleanNote = typeof note === 'string' ? note.trim().slice(0, 500) : '';
 
-  const settingsRow = (await db.execute({ sql: 'SELECT * FROM settings WHERE account_id = ?', args: [accountId] })).rows[0];
   const unpaidRows = (await db.execute({
-    sql: 'SELECT * FROM entries WHERE worker_id = ? AND account_id = ? AND paid = 0 ORDER BY date ASC',
+    sql: `SELECT entries.*, COALESCE(jobs.rate, 0) AS job_rate
+          FROM entries LEFT JOIN jobs ON jobs.id = entries.job_id
+          WHERE entries.worker_id = ? AND entries.account_id = ? AND entries.paid = 0
+          ORDER BY entries.date ASC`,
     args: [workerId, accountId],
   })).rows;
   const items = unpaidRows.map(row => ({
     id: row.id,
-    cents: Math.round(row.hours * settingsRow.rate * worker.share_percent / 100 * 100),
+    cents: Math.round(row.hours * row.job_rate * worker.share_percent / 100 * 100),
   }));
 
   const targetCents = Math.round(amount * 100);

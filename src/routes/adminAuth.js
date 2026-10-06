@@ -60,8 +60,12 @@ router.post('/signup', signupLimiter, async (req, res) => {
     args: [accountId, parsed.name, parsed.slug, hashPassword(parsed.password), Date.now()],
   });
   await db.execute({
-    sql: 'INSERT INTO settings (account_id, rate, tax_percent, exchange_rate, exchange_manual) VALUES (?, 21.3, 20, NULL, 0)',
+    sql: 'INSERT INTO settings (account_id, exchange_rate, exchange_manual) VALUES (?, NULL, 0)',
     args: [accountId],
+  });
+  await db.execute({
+    sql: 'INSERT INTO jobs (id, account_id, name, rate, tax_percent, fx_mode, exchange_rate, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)',
+    args: [uid(), accountId, 'General', 21.3, 20, 'shared', Date.now()],
   });
   await createAdminSession(res, accountId);
   res.status(201).json({ ok: true });

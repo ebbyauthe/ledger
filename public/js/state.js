@@ -3,10 +3,11 @@ export const TAX_DEFAULT = 20;
 export const SHARE_DEFAULT = 50;
 export const OVERVIEW_ID = '__overview__';
 export const MONTHLY_ID = '__monthly__';
+export const JOBS_ID = '__jobs__';
 
 export const state = {
-  settings: { rate: RATE_DEFAULT, taxPercent: TAX_DEFAULT, exchangeRate: null, exchangeManual: false },
-  workers: [], entries: {}, timers: {}, payments: {}, periods: [],
+  settings: { exchangeRate: null, exchangeManual: false },
+  workers: [], entries: {}, timers: {}, payments: {}, periods: [], jobs: [],
 };
 
 // `state` gets reassigned wholesale in a couple of places (loading fresh data from the server).
@@ -19,40 +20,55 @@ export function replaceState(newState){
 
 /* ---------------- Pay math (pure, operates on already-loaded state) ---------------- */
 
+// Resolves the rate/tax/fx a given job should use for pay math, falling back to this
+// module's defaults if the job can't be found (shouldn't normally happen — every account
+// always has at least one job).
+export function findJob(jobId){
+  return state.jobs.find(j => j.id === jobId) || null;
+}
+
+export function resolveJobRate(jobId){
+  const job = findJob(jobId);
+  if(!job) return { rate: RATE_DEFAULT, taxPercent: TAX_DEFAULT, exchangeRate: state.settings.exchangeRate || 0 };
+  const exchangeRate = job.fxMode === 'custom' ? (job.exchangeRate || 0) : (state.settings.exchangeRate || 0);
+  return { rate: job.rate, taxPercent: job.taxPercent, exchangeRate };
+}
+
+export function calcEntryRow(entry, sharePct){
+  const { rate, taxPercent, exchangeRate } = resolveJobRate(entry.jobId);
+  const gross = entry.hours * rate;
+  const tax = gross * taxPercent / 100;
+  const workerPay = gross * sharePct / 100;
+  const workerPayNGN = workerPay * exchangeRate;
+  return { gross, tax, workerPay, workerPayNGN };
+}
+
 export function calcWorkerTotals(workerId){
   const worker = state.workers.find(w => w.id === workerId);
   const list = state.entries[workerId] || [];
-  const rate = state.settings.rate;
-  const taxPct = state.settings.taxPercent;
   const sharePct = worker ? worker.sharePercent : SHARE_DEFAULT;
-  const fx = state.settings.exchangeRate || 0;
 
-  let totalHours = 0, gross = 0, unpaidHours = 0, personalHours = 0;
+  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, workerPayNGN = 0;
+  let unpaidWorkerPay = 0, unpaidWorkerPayNGN = 0;
+  let personalAdvance = 0, personalAdvanceNGN = 0;
   list.forEach(e => {
+    const row = calcEntryRow(e, sharePct);
     totalHours += e.hours;
-    gross += e.hours * rate;
-    if(!e.paid) unpaidHours += e.hours;
-    if(e.paid && e.paymentSource === 'personal') personalHours += e.hours;
+    gross += row.gross;
+    tax += row.tax;
+    workerPay += row.workerPay;
+    workerPayNGN += row.workerPayNGN;
+    if(!e.paid){ unpaidWorkerPay += row.workerPay; unpaidWorkerPayNGN += row.workerPayNGN; }
+    if(e.paid && e.paymentSource === 'personal'){ personalAdvance += row.workerPay; personalAdvanceNGN += row.workerPayNGN; }
   });
-  const tax = gross * taxPct / 100;
-  const workerPay = gross * sharePct / 100;
   const myTake = gross - tax - workerPay;
-  const workerPayNGN = workerPay * fx;
-
-  const unpaidGross = unpaidHours * rate;
-  const unpaidWorkerPay = unpaidGross * sharePct / 100;
-  const unpaidWorkerPayNGN = unpaidWorkerPay * fx;
-
-  const personalGross = personalHours * rate;
-  const personalAdvance = personalGross * sharePct / 100;
-  const personalAdvanceNGN = personalAdvance * fx;
 
   return { totalHours, gross, tax, workerPay, myTake, workerPayNGN, unpaidWorkerPay, unpaidWorkerPayNGN, personalAdvance, personalAdvanceNGN };
 }
 
 export function calcAllWorkersTotals(){
-  const fx = state.settings.exchangeRate || 0;
-  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, myTake = 0, unpaidWorkerPay = 0, personalAdvance = 0;
+  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, myTake = 0, workerPayNGN = 0;
+  let unpaidWorkerPay = 0, unpaidWorkerPayNGN = 0, personalAdvance = 0, personalAdvanceNGN = 0;
   const perWorker = state.workers.map(w => {
     const t = calcWorkerTotals(w.id);
     totalHours += t.totalHours;
@@ -60,30 +76,22 @@ export function calcAllWorkersTotals(){
     tax += t.tax;
     workerPay += t.workerPay;
     myTake += t.myTake;
+    workerPayNGN += t.workerPayNGN;
     unpaidWorkerPay += t.unpaidWorkerPay;
+    unpaidWorkerPayNGN += t.unpaidWorkerPayNGN;
     personalAdvance += t.personalAdvance;
+    personalAdvanceNGN += t.personalAdvanceNGN;
     return { worker: w, totals: t };
   });
   return {
-    totalHours, gross, tax, workerPay, myTake, unpaidWorkerPay, personalAdvance,
-    workerPayNGN: workerPay * fx, unpaidWorkerPayNGN: unpaidWorkerPay * fx, personalAdvanceNGN: personalAdvance * fx,
+    totalHours, gross, tax, workerPay, myTake, workerPayNGN,
+    unpaidWorkerPay, unpaidWorkerPayNGN, personalAdvance, personalAdvanceNGN,
     perWorker,
   };
 }
 
 export function isWorkerClockedIn(workerId){
   return (state.timers[workerId] || []).some(t => !t.endedAt);
-}
-
-export function calcEntryRow(hours, sharePct){
-  const rate = state.settings.rate;
-  const taxPct = state.settings.taxPercent;
-  const fx = state.settings.exchangeRate || 0;
-  const gross = hours * rate;
-  const tax = gross * taxPct / 100;
-  const workerPay = gross * sharePct / 100;
-  const workerPayNGN = workerPay * fx;
-  return { gross, tax, workerPay, workerPayNGN };
 }
 
 // Groups an (already date-sorted) entries array by period, newest period first.
@@ -123,29 +131,26 @@ export function computePaymentDate(periodStartedAt){
 }
 
 export function calcPeriodTotals(periodId){
-  const rate = state.settings.rate;
-  const taxPct = state.settings.taxPercent;
-  const fx = state.settings.exchangeRate || 0;
-  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, unpaidWorkerPay = 0, personalAdvance = 0;
+  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, workerPayNGN = 0;
+  let unpaidWorkerPay = 0, unpaidWorkerPayNGN = 0, personalAdvance = 0, personalAdvanceNGN = 0;
   state.workers.forEach(w => {
     const sharePct = w.sharePercent;
     (state.entries[w.id] || []).forEach(e => {
       if(e.periodId !== periodId) return;
-      const g = e.hours * rate;
-      const wp = g * sharePct / 100;
+      const row = calcEntryRow(e, sharePct);
       totalHours += e.hours;
-      gross += g;
-      tax += g * taxPct / 100;
-      workerPay += wp;
-      if(!e.paid) unpaidWorkerPay += wp;
-      if(e.paid && e.paymentSource === 'personal') personalAdvance += wp;
+      gross += row.gross;
+      tax += row.tax;
+      workerPay += row.workerPay;
+      workerPayNGN += row.workerPayNGN;
+      if(!e.paid){ unpaidWorkerPay += row.workerPay; unpaidWorkerPayNGN += row.workerPayNGN; }
+      if(e.paid && e.paymentSource === 'personal'){ personalAdvance += row.workerPay; personalAdvanceNGN += row.workerPayNGN; }
     });
   });
   const myTake = gross - tax - workerPay;
   return {
-    totalHours, gross, tax, workerPay, myTake,
-    workerPayNGN: workerPay * fx, unpaidWorkerPay, unpaidWorkerPayNGN: unpaidWorkerPay * fx,
-    personalAdvance, personalAdvanceNGN: personalAdvance * fx,
+    totalHours, gross, tax, workerPay, myTake, workerPayNGN,
+    unpaidWorkerPay, unpaidWorkerPayNGN, personalAdvance, personalAdvanceNGN,
   };
 }
 

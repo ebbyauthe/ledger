@@ -92,26 +92,32 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
   if (!workerRow) return res.status(404).json({ error: 'not found' });
   const settingsRow = (await db.execute({ sql: 'SELECT * FROM settings WHERE account_id = ?', args: [workerRow.account_id] })).rows[0];
   const entryRows = (await db.execute({
-    sql: 'SELECT * FROM entries WHERE worker_id = ? AND account_id = ? ORDER BY date DESC',
+    sql: `SELECT entries.*, jobs.rate AS job_rate, jobs.fx_mode AS job_fx_mode,
+                 jobs.exchange_rate AS job_exchange_rate, jobs.name AS job_name
+          FROM entries LEFT JOIN jobs ON jobs.id = entries.job_id
+          WHERE entries.worker_id = ? AND entries.account_id = ?
+          ORDER BY entries.date DESC`,
     args: [id, workerRow.account_id],
   })).rows;
 
-  const rate = settingsRow.rate;
-  const taxPct = settingsRow.tax_percent;
   const sharePct = workerRow.share_percent;
-  const fx = settingsRow.exchange_rate || 0;
 
   let totalHours = 0;
   let totalWorkerPay = 0;
+  let totalWorkerPayNGN = 0;
   let unpaidWorkerPay = 0;
+  let unpaidWorkerPayNGN = 0;
   const entries = entryRows.map(row => {
     const e = mapEntry(row);
-    const gross = e.hours * rate;
+    const fx = (row.job_fx_mode === 'custom' && row.job_exchange_rate) ? row.job_exchange_rate : (settingsRow.exchange_rate || 0);
+    const gross = e.hours * (row.job_rate || 0);
     const workerPay = (gross * sharePct) / 100;
+    const workerPayNGN = workerPay * fx;
     totalHours += e.hours;
     totalWorkerPay += workerPay;
-    if (!e.paid) unpaidWorkerPay += workerPay;
-    return { ...e, workerPay, workerPayNGN: workerPay * fx };
+    totalWorkerPayNGN += workerPayNGN;
+    if (!e.paid) { unpaidWorkerPay += workerPay; unpaidWorkerPayNGN += workerPayNGN; }
+    return { ...e, jobName: row.job_name || null, workerPay, workerPayNGN };
   });
 
   const timerRows = (await db.execute({
@@ -131,9 +137,9 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
     name: workerRow.name,
     totalHours,
     workerPay: totalWorkerPay,
-    workerPayNGN: totalWorkerPay * fx,
+    workerPayNGN: totalWorkerPayNGN,
     unpaidWorkerPay,
-    unpaidWorkerPayNGN: unpaidWorkerPay * fx,
+    unpaidWorkerPayNGN,
     entries,
     timerSessions,
     runningTimer,

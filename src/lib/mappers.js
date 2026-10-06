@@ -1,9 +1,19 @@
 export function mapSettings(row) {
   return {
-    rate: row.rate,
-    taxPercent: row.tax_percent,
     exchangeRate: row.exchange_rate,
     exchangeManual: !!row.exchange_manual,
+  };
+}
+
+export function mapJob(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    rate: row.rate,
+    taxPercent: row.tax_percent,
+    fxMode: row.fx_mode,
+    exchangeRate: row.exchange_rate,
+    createdAt: row.created_at,
   };
 }
 
@@ -20,6 +30,7 @@ export function mapEntry(row) {
     paid: !!row.paid,
     paymentSource: row.payment_source || null,
     periodId: row.period_id || null,
+    jobId: row.job_id || null,
   };
 }
 

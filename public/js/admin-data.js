@@ -47,6 +47,19 @@ export async function addPeriod(label){
   return p;
 }
 
+export async function addJob(job){
+  const j = await api('/api/admin/jobs', { method: 'POST', body: job });
+  state.jobs.push(j);
+  return j;
+}
+
+export async function updateJob(jobId, job){
+  const j = await api(`/api/admin/jobs/${jobId}`, { method: 'PUT', body: job });
+  const idx = state.jobs.findIndex(x => x.id === jobId);
+  if(idx !== -1) state.jobs[idx] = j;
+  return j;
+}
+
 export async function updateWorkerShare(workerId, share){
   const w = await api(`/api/admin/workers/${workerId}`, { method: 'PUT', body: { sharePercent: share } });
   const idx = state.workers.findIndex(x => x.id === workerId);

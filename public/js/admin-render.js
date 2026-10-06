@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import {
-  state, replaceState, SHARE_DEFAULT, OVERVIEW_ID, MONTHLY_ID,
-  calcWorkerTotals, calcAllWorkersTotals, isWorkerClockedIn, calcEntryRow,
+  state, replaceState, SHARE_DEFAULT, RATE_DEFAULT, TAX_DEFAULT, OVERVIEW_ID, MONTHLY_ID, JOBS_ID,
+  calcWorkerTotals, calcAllWorkersTotals, isWorkerClockedIn, calcEntryRow, findJob,
   groupEntriesByPeriod, currentPeriod, calcAllPeriodsTotals, computePaymentDate,
 } from './state.js';
 import { fmtCAD, fmtNGN, fmtDuration, fmtClockBoth, fmtDayTZ, fmtWhenCell, fmtPaymentDate, fmtDateLong, escapeHtml, TZ_QC } from './format.js';
@@ -9,7 +9,7 @@ import { openModal, modalOpen } from './modal.js';
 import {
   saveSettings, fetchExchangeRate, addWorker, addPeriod, updateWorkerShare, resetWorkerPassword,
   addEntryAdmin, deleteEntryAdmin, setEntryPaid, markAllPaid, addPaymentAdmin, deletePaymentAdmin,
-  setTimerLogged, deleteWorker, loginAdmin, signupAdmin,
+  setTimerLogged, deleteWorker, loginAdmin, signupAdmin, addJob, updateJob,
 } from './admin-data.js';
 
 let selectedWorkerId = null;
@@ -182,7 +182,6 @@ export function render(){
         <div class="brand">Ledger<small>Work hours portal</small></div>
         <ul class="worker-list" id="workerList"></ul>
         <button class="add-worker-btn" id="addWorkerBtn">+ Add worker</button>
-        <button class="settings-toggle" id="settingsToggle">Rate, tax &amp; exchange settings</button>
         <a class="settings-toggle" href="/w/${encodeURIComponent(currentAccountSlug || 'default')}" target="_blank" rel="noopener">Open worker view ↗</a>
         <button class="settings-toggle" id="logoutBtn">Log out</button>
       </div>
@@ -233,39 +232,6 @@ function wireStaticButtons(){
     });
   };
 
-  document.getElementById('settingsToggle').onclick = () => {
-    const s = state.settings;
-    openModal(`
-      <h3>Rate, tax &amp; exchange</h3>
-      <div class="field">
-        <label>Your hourly rate (CAD)</label>
-        <input type="number" id="modalRate" value="${s.rate}" step="0.01" min="0">
-      </div>
-      <div class="field">
-        <label>Tax (%)</label>
-        <input type="number" id="modalTax" value="${s.taxPercent}" min="0" max="100">
-      </div>
-      <div class="field">
-        <label>CAD → NGN exchange rate</label>
-        <input type="number" id="modalFx" value="${s.exchangeRate ? s.exchangeRate.toFixed(2) : ''}" step="0.01" min="0">
-        <div class="fx-note">Leave as-is to keep using the live rate. Edit it to lock a manual rate.</div>
-      </div>
-    `, async () => {
-      let rate = parseFloat(document.getElementById('modalRate').value);
-      let tax = parseFloat(document.getElementById('modalTax').value);
-      let fx = parseFloat(document.getElementById('modalFx').value);
-      if(!isNaN(rate)) s.rate = rate;
-      if(!isNaN(tax)) s.taxPercent = Math.min(100, Math.max(0, tax));
-      if(!isNaN(fx) && fx !== s.exchangeRate){
-        s.exchangeRate = fx;
-        s.exchangeManual = true;
-      }
-      await saveSettings();
-      render();
-      return true;
-    });
-  };
-
   document.getElementById('logoutBtn').onclick = async () => {
     try{ await api('/api/admin/logout', { method: 'POST' }); }catch(e){}
     adminAuthenticated = false;
@@ -293,6 +259,12 @@ function renderSidebar(){
   monthlyLi.onclick = () => { selectedWorkerId = MONTHLY_ID; render(); };
   ul.appendChild(monthlyLi);
 
+  const jobsLi = document.createElement('li');
+  jobsLi.className = selectedWorkerId === JOBS_ID ? 'active' : '';
+  jobsLi.innerHTML = `<span>💼 Jobs</span>`;
+  jobsLi.onclick = () => { selectedWorkerId = JOBS_ID; render(); };
+  ul.appendChild(jobsLi);
+
   state.workers.forEach(w => {
     const totals = calcWorkerTotals(w.id);
     const clockedIn = isWorkerClockedIn(w.id);
@@ -319,6 +291,12 @@ function renderMain(){
     return;
   }
 
+  if(selectedWorkerId === JOBS_ID){
+    main.classList.remove('has-tabs');
+    renderJobsMain(main);
+    return;
+  }
+
   const worker = state.workers.find(w => w.id === selectedWorkerId);
 
   if(!worker){
@@ -339,7 +317,7 @@ function renderMain(){
     <div class="worker-header">
       <div>
         <h1>${escapeHtml(worker.name)}</h1>
-        <div class="sub">CA$${state.settings.rate}/hr · ${state.settings.taxPercent}% tax</div>
+        <div class="sub">${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} logged · ${worker.sharePercent}% share</div>
       </div>
       <div class="share-field">
         Worker share of gross
@@ -357,13 +335,6 @@ function renderMain(){
     </div>
 
     ${adminWorkerTab === 'overview' ? `
-    <div class="fx-bar">
-      <span>1 CAD → ₦</span>
-      <input type="number" id="fxQuickInput" step="0.01" min="0" value="${state.settings.exchangeRate ? state.settings.exchangeRate.toFixed(2) : ''}">
-      <span class="fx-tag">${state.settings.exchangeManual ? 'manual' : 'live'}</span>
-      ${state.settings.exchangeManual ? `<button class="fx-live-btn" id="fxUseLiveBtn">Use live rate</button>` : ''}
-    </div>
-
     <div class="receipt">
       <div class="receipt-grid">
         <div class="receipt-item">
@@ -375,7 +346,7 @@ function renderMain(){
           <div class="value">${fmtCAD(totals.gross)}</div>
         </div>
         <div class="receipt-item deduction">
-          <div class="label">Tax (${state.settings.taxPercent}%)</div>
+          <div class="label">Tax</div>
           <div class="value">-${fmtCAD(totals.tax)}</div>
         </div>
         <div class="receipt-item highlight">
@@ -407,7 +378,7 @@ function renderMain(){
     <div class="entries-card">
       ${entries.length ? entryGroups.map(g => {
         const groupHours = g.entries.reduce((s,e) => s + e.hours, 0);
-        const groupWorkerPay = g.entries.reduce((s,e) => s + calcEntryRow(e.hours, worker.sharePercent).workerPay, 0);
+        const groupWorkerPay = g.entries.reduce((s,e) => s + calcEntryRow(e, worker.sharePercent).workerPay, 0);
         return `
       <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;display:flex;justify-content:space-between;align-items:center;">
         <span>${escapeHtml(g.period.label)}</span>
@@ -416,14 +387,16 @@ function renderMain(){
       <table>
         <thead>
           <tr>
-            <th>Date</th><th>Hours</th><th>Gross</th><th>Worker pay</th><th>Worker pay ₦</th><th>Note</th><th>Paid</th><th></th>
+            <th>Date</th><th>Job</th><th>Hours</th><th>Gross</th><th>Worker pay</th><th>Worker pay ₦</th><th>Note</th><th>Paid</th><th></th>
           </tr>
         </thead>
         <tbody>
           ${g.entries.map(e => {
-            const c = calcEntryRow(e.hours, worker.sharePercent);
+            const c = calcEntryRow(e, worker.sharePercent);
+            const job = findJob(e.jobId);
             return `<tr>
               <td data-label="Date">${e.date}</td>
+              <td data-label="Job">${escapeHtml(job ? job.name : 'Unknown')}</td>
               <td data-label="Hours">${e.hours.toFixed(2)}</td>
               <td data-label="Gross">${fmtCAD(c.gross)}</td>
               <td data-label="Worker pay">${fmtCAD(c.workerPay)}</td>
@@ -452,6 +425,9 @@ function renderMain(){
         <input type="date" name="date" id="entryDate" value="${new Date().toISOString().slice(0,10)}">
         <input type="number" name="hours" id="entryHours" step="0.01" min="0.01" max="24" placeholder="Hours">
         <input type="text" name="note" id="entryNote" placeholder="Note (optional)">
+        <select id="entryJob" title="Which job this entry was for">
+          ${state.jobs.map(j => `<option value="${j.id}">${escapeHtml(j.name)}</option>`).join('')}
+        </select>
         <select id="entryPeriod" title="Which period this entry counts toward">
           ${state.periods.slice().sort((a,b) => b.startedAt - a.startedAt).map(p => `<option value="${p.id}" ${curPeriod && p.id === curPeriod.id ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}
         </select>
@@ -527,24 +503,6 @@ function renderMain(){
     };
   });
 
-  const fxQuickInput = document.getElementById('fxQuickInput');
-  if(fxQuickInput) fxQuickInput.onchange = async (e) => {
-    let v = parseFloat(e.target.value);
-    if(isNaN(v) || v <= 0) return;
-    state.settings.exchangeRate = v;
-    state.settings.exchangeManual = true;
-    await saveSettings();
-    render();
-  };
-  const fxLiveBtn = document.getElementById('fxUseLiveBtn');
-  if(fxLiveBtn){
-    fxLiveBtn.onclick = async () => {
-      state.settings.exchangeManual = false;
-      await saveSettings();
-      fetchExchangeRate();
-    };
-  }
-
   document.getElementById('shareInput').onchange = async (e) => {
     let v = parseFloat(e.target.value);
     if(isNaN(v)) v = SHARE_DEFAULT;
@@ -592,12 +550,14 @@ function renderMain(){
     const hours = parseFloat(document.getElementById('entryHours').value);
     const periodEl = document.getElementById('entryPeriod');
     const periodId = periodEl ? periodEl.value : undefined;
+    const jobEl = document.getElementById('entryJob');
+    const jobId = jobEl ? jobEl.value : undefined;
     if(!date || !hours || hours <= 0){
       alert('Enter a date and number of hours.');
       return;
     }
     try{
-      await addEntryAdmin(worker.id, { date, hours, note, periodId });
+      await addEntryAdmin(worker.id, { date, hours, note, periodId, jobId });
       render();
     }catch(e){
       alert('Could not save entry: ' + e.message);
@@ -751,7 +711,7 @@ function renderOverviewMain(main){
     <div class="worker-header">
       <div>
         <h1>All workers overview</h1>
-        <div class="sub">CA$${state.settings.rate}/hr · ${state.settings.taxPercent}% tax · ${state.workers.length} worker${state.workers.length === 1 ? '' : 's'}</div>
+        <div class="sub">${state.jobs.length} job${state.jobs.length === 1 ? '' : 's'} · ${state.workers.length} worker${state.workers.length === 1 ? '' : 's'}</div>
       </div>
     </div>
 
@@ -916,4 +876,118 @@ function renderMonthlyMain(main){
       return true;
     });
   };
+}
+
+function renderJobsMain(main){
+  const s = state.settings;
+  main.innerHTML = `
+    <div class="worker-header">
+      <div>
+        <h1>Jobs</h1>
+        <div class="sub">${state.jobs.length} job${state.jobs.length === 1 ? '' : 's'}</div>
+      </div>
+      <button class="btn-primary" id="addJobBtn">+ Add job</button>
+    </div>
+
+    <div class="fx-bar">
+      <span>Default 1 CAD → ₦</span>
+      <input type="number" id="fxQuickInput" step="0.01" min="0" value="${s.exchangeRate ? s.exchangeRate.toFixed(2) : ''}">
+      <span class="fx-tag">${s.exchangeManual ? 'manual' : 'live'}</span>
+      ${s.exchangeManual ? `<button class="fx-live-btn" id="fxUseLiveBtn">Use live rate</button>` : ''}
+    </div>
+    <p class="fx-note" style="margin: 4px 0 16px;">Used by any job below set to "shared" exchange rate.</p>
+
+    <div class="entries-card">
+      ${state.jobs.length ? `
+      <table>
+        <thead><tr><th>Name</th><th>Rate (CAD/hr)</th><th>Tax %</th><th>Exchange rate</th><th></th></tr></thead>
+        <tbody>
+          ${state.jobs.map(j => `<tr>
+            <td data-label="Name">${escapeHtml(j.name)}</td>
+            <td data-label="Rate (CAD/hr)">${fmtCAD(j.rate)}</td>
+            <td data-label="Tax %">${j.taxPercent}%</td>
+            <td data-label="Exchange rate">${j.fxMode === 'custom' ? `Custom (₦${j.exchangeRate ? j.exchangeRate.toFixed(2) : '—'})` : 'Shared default'}</td>
+            <td data-label=""><button class="settings-toggle edit-job-btn" data-id="${j.id}">Edit</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      ` : `<div class="empty-entries">No jobs yet.</div>`}
+    </div>
+  `;
+
+  const fxQuickInput = document.getElementById('fxQuickInput');
+  fxQuickInput.onchange = async (e) => {
+    let v = parseFloat(e.target.value);
+    if(isNaN(v) || v <= 0) return;
+    state.settings.exchangeRate = v;
+    state.settings.exchangeManual = true;
+    await saveSettings();
+    render();
+  };
+  const fxLiveBtn = document.getElementById('fxUseLiveBtn');
+  if(fxLiveBtn){
+    fxLiveBtn.onclick = async () => {
+      state.settings.exchangeManual = false;
+      await saveSettings();
+      fetchExchangeRate();
+    };
+  }
+
+  const openJobModal = (job) => {
+    const fxCustom = !!(job && job.fxMode === 'custom');
+    openModal(`
+      <h3>${job ? 'Edit job' : 'Add job'}</h3>
+      <div class="field">
+        <label>Job name</label>
+        <input type="text" id="modalJobName" value="${job ? escapeHtml(job.name) : ''}" placeholder="e.g. Client B" autofocus>
+      </div>
+      <div class="field">
+        <label>Hourly rate (CAD)</label>
+        <input type="number" id="modalJobRate" value="${job ? job.rate : RATE_DEFAULT}" step="0.01" min="0">
+      </div>
+      <div class="field">
+        <label>Tax (%)</label>
+        <input type="number" id="modalJobTax" value="${job ? job.taxPercent : TAX_DEFAULT}" min="0" max="100">
+      </div>
+      <div class="field">
+        <label>CAD → NGN exchange rate</label>
+        <select id="modalJobFxMode">
+          <option value="shared" ${!fxCustom ? 'selected' : ''}>Use the shared default rate</option>
+          <option value="custom" ${fxCustom ? 'selected' : ''}>Use a custom rate for this job</option>
+        </select>
+        <input type="number" id="modalJobFxRate" style="margin-top:8px;${fxCustom ? '' : 'display:none;'}" value="${fxCustom && job.exchangeRate ? job.exchangeRate.toFixed(2) : ''}" step="0.01" min="0" placeholder="Custom CAD → NGN rate">
+      </div>
+    `, async () => {
+      const name = document.getElementById('modalJobName').value.trim();
+      const rate = parseFloat(document.getElementById('modalJobRate').value);
+      const taxPercent = parseFloat(document.getElementById('modalJobTax').value);
+      const fxMode = document.getElementById('modalJobFxMode').value;
+      const exchangeRate = fxMode === 'custom' ? parseFloat(document.getElementById('modalJobFxRate').value) : undefined;
+      if(!name){ alert('Enter a job name.'); return false; }
+      if(isNaN(rate) || rate <= 0){ alert('Enter a rate greater than 0.'); return false; }
+      if(isNaN(taxPercent) || taxPercent < 0 || taxPercent > 100){ alert('Tax must be between 0 and 100.'); return false; }
+      if(fxMode === 'custom' && (isNaN(exchangeRate) || exchangeRate <= 0)){ alert('Enter a custom exchange rate greater than 0.'); return false; }
+      try{
+        if(job) await updateJob(job.id, { name, rate, taxPercent, fxMode, exchangeRate });
+        else await addJob({ name, rate, taxPercent, fxMode, exchangeRate });
+        render();
+        return true;
+      }catch(e){
+        alert('Could not save job: ' + e.message);
+        return false;
+      }
+    }, job ? 'Save' : 'Add');
+
+    document.getElementById('modalJobFxMode').onchange = (e) => {
+      document.getElementById('modalJobFxRate').style.display = e.target.value === 'custom' ? '' : 'none';
+    };
+  };
+
+  document.getElementById('addJobBtn').onclick = () => openJobModal(null);
+  main.querySelectorAll('.edit-job-btn').forEach(btn => {
+    btn.onclick = () => {
+      const job = state.jobs.find(j => j.id === btn.dataset.id);
+      if(job) openJobModal(job);
+    };
+  });
 }
