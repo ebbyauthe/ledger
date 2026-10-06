@@ -376,6 +376,18 @@ function renderMain(){
 
     ${adminWorkerTab === 'hours' ? `
     <div class="entries-card">
+      <div class="add-entry-row">
+        <input type="date" name="date" id="entryDate" value="${new Date().toISOString().slice(0,10)}">
+        <input type="number" name="hours" id="entryHours" step="0.01" min="0.01" max="24" placeholder="Hours">
+        <input type="text" name="note" id="entryNote" placeholder="Note (optional)">
+        <select id="entryJob" title="Which job this entry was for">
+          ${state.jobs.map(j => `<option value="${j.id}">${escapeHtml(j.name)}</option>`).join('')}
+        </select>
+        <select id="entryPeriod" title="Which period this entry counts toward">
+          ${state.periods.slice().sort((a,b) => b.startedAt - a.startedAt).map(p => `<option value="${p.id}" ${curPeriod && p.id === curPeriod.id ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}
+        </select>
+        <button class="btn-primary" id="addEntryBtn">Add entry</button>
+      </div>
       ${entries.length ? entryGroups.map(g => {
         const groupHours = g.entries.reduce((s,e) => s + e.hours, 0);
         const groupWorkerPay = g.entries.reduce((s,e) => s + calcEntryRow(e, worker.sharePercent).workerPay, 0);
@@ -418,25 +430,13 @@ function renderMain(){
           }).join('')}
         </tbody>
       </table>`;
-      }).join('') : `<div class="empty-entries">No hours logged yet. Add the first entry below.</div>`}
+      }).join('') : `<div class="empty-entries">No hours logged yet. Add the first entry above.</div>`}
       ${entries.length ? `
       <div class="add-entry-row">
         <button class="settings-toggle" id="markAllPaidPersonalBtn">Mark all as paid (personal funds)</button>
         <button class="settings-toggle" id="markAllPaidOfficialBtn">Mark all as paid (official)</button>
       </div>
       ` : ''}
-      <div class="add-entry-row">
-        <input type="date" name="date" id="entryDate" value="${new Date().toISOString().slice(0,10)}">
-        <input type="number" name="hours" id="entryHours" step="0.01" min="0.01" max="24" placeholder="Hours">
-        <input type="text" name="note" id="entryNote" placeholder="Note (optional)">
-        <select id="entryJob" title="Which job this entry was for">
-          ${state.jobs.map(j => `<option value="${j.id}">${escapeHtml(j.name)}</option>`).join('')}
-        </select>
-        <select id="entryPeriod" title="Which period this entry counts toward">
-          ${state.periods.slice().sort((a,b) => b.startedAt - a.startedAt).map(p => `<option value="${p.id}" ${curPeriod && p.id === curPeriod.id ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}
-        </select>
-        <button class="btn-primary" id="addEntryBtn">Add entry</button>
-      </div>
     </div>
     ` : ''}
 
