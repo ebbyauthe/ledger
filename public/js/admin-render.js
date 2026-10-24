@@ -17,6 +17,8 @@ import {
 
 let selectedMonthTeam = new Date().toISOString().slice(0, 7);
 let selectedMonthByWorker = {};
+let progressionModeTeam = 'daily';
+let progressionModeByWorker = {};
 
 let selectedWorkerId = null;
 let adminAuthenticated = false;
@@ -477,7 +479,7 @@ function renderMain(){
       ` : `<div class="empty-entries">No payments logged yet.</div>`}
       <div class="add-entry-row">
         <input type="number" name="paymentAmount" id="paymentAmount" step="0.01" min="0.01" placeholder="Amount (CAD)" style="width:130px;">
-        <select id="paymentSource" style="font-family:'Inter', sans-serif;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:13px;">
+        <select id="paymentSource">
           <option value="">Source (optional)</option>
           <option value="personal">Personal</option>
           <option value="official">Official</option>
@@ -757,28 +759,38 @@ function renderMain(){
 
 // Shared by the team-wide overview and each worker's own Overview tab. entries: [{ date,
 // hours, workerPay }]. extraHtml (optional) renders above the charts — used by the team view
-// for its "all metrics" stat-tile row.
-function renderMonthProgression(container, entries, selectedMonth, onMonthChange, extraHtml){
+// for its "all metrics" stat-tile row. mode is 'daily' (that day's own hours/pay — drops back
+// down on a lighter day) or 'overall' (cumulative running total through the month).
+function renderMonthProgression(container, entries, { selectedMonth, onMonthChange, mode, onModeChange, extraHtml }){
   const months = getAvailableMonths(entries);
   const month = months.includes(selectedMonth) ? selectedMonth : months[0];
   const progression = calcMonthlyProgression(entries, month);
+  const hoursPoints = mode === 'overall' ? progression.hoursPoints : progression.dailyHoursPoints;
+  const payPoints = mode === 'overall' ? progression.payPoints : progression.dailyPayPoints;
+
   container.innerHTML = `
     <div class="progression-section">
       <div class="progression-header">
         <h2>${escapeHtml(monthLabel(month))}</h2>
-        <select class="month-select" id="progressionMonthSelect">
-          ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${escapeHtml(monthLabel(m))}</option>`).join('')}
-        </select>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="segmented" id="progressionModeToggle">
+            <button type="button" class="segmented-btn ${mode === 'daily' ? 'active' : ''}" data-mode="daily">Daily</button>
+            <button type="button" class="segmented-btn ${mode === 'overall' ? 'active' : ''}" data-mode="overall">Overall</button>
+          </div>
+          <select class="month-select" id="progressionMonthSelect">
+            ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${escapeHtml(monthLabel(m))}</option>`).join('')}
+          </select>
+        </div>
       </div>
       ${extraHtml || ''}
       <div class="chart-pair">
         <div class="chart-card">
-          <div class="chart-card-title">Hours</div>
+          <div class="chart-card-title">${mode === 'overall' ? 'Total hours' : 'Hours per day'}</div>
           <div class="chart-card-total">${progression.totalHours.toFixed(1)}h</div>
           <div id="progressionHoursChart"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-card-title">Pay</div>
+          <div class="chart-card-title">${mode === 'overall' ? 'Total pay' : 'Pay per day'}</div>
           <div class="chart-card-total">${fmtCAD(progression.totalPay)}</div>
           <div id="progressionPayChart"></div>
         </div>
@@ -786,14 +798,17 @@ function renderMonthProgression(container, entries, selectedMonth, onMonthChange
     </div>
   `;
   renderProgressionChart(container.querySelector('#progressionHoursChart'), {
-    points: progression.hoursPoints, daysInMonth: progression.daysInMonth,
+    points: hoursPoints, daysInMonth: progression.daysInMonth,
     colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet this month',
   });
   renderProgressionChart(container.querySelector('#progressionPayChart'), {
-    points: progression.payPoints, daysInMonth: progression.daysInMonth,
+    points: payPoints, daysInMonth: progression.daysInMonth,
     colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet this month',
   });
   container.querySelector('#progressionMonthSelect').onchange = (e) => onMonthChange(e.target.value);
+  container.querySelectorAll('.segmented-btn').forEach(btn => {
+    btn.onclick = () => onModeChange(btn.dataset.mode);
+  });
 }
 
 function buildTeamMonthEntries(){
@@ -824,10 +839,13 @@ function renderTeamMonthSection(container){
       <div class="receipt-item"><div class="label">Your take (after tax &amp; worker pay)</div><div class="value">${fmtCAD(monthTotals.myTake)}</div></div>
     </div>
   `;
-  renderMonthProgression(container, list, selectedMonthTeam, (month) => {
-    selectedMonthTeam = month;
-    renderTeamMonthSection(container);
-  }, statsHtml);
+  renderMonthProgression(container, list, {
+    selectedMonth: selectedMonthTeam,
+    onMonthChange: (month) => { selectedMonthTeam = month; renderTeamMonthSection(container); },
+    mode: progressionModeTeam,
+    onModeChange: (mode) => { progressionModeTeam = mode; renderTeamMonthSection(container); },
+    extraHtml: statsHtml,
+  });
 }
 
 function renderWorkerMonthSection(container, worker){
@@ -835,9 +853,12 @@ function renderWorkerMonthSection(container, worker){
     date: e.date, hours: e.hours, workerPay: calcEntryRow(e, worker.sharePercent).workerPay,
   }));
   const selected = selectedMonthByWorker[worker.id] || new Date().toISOString().slice(0, 7);
-  renderMonthProgression(container, entries, selected, (month) => {
-    selectedMonthByWorker[worker.id] = month;
-    renderWorkerMonthSection(container, worker);
+  const mode = progressionModeByWorker[worker.id] || 'daily';
+  renderMonthProgression(container, entries, {
+    selectedMonth: selected,
+    onMonthChange: (month) => { selectedMonthByWorker[worker.id] = month; renderWorkerMonthSection(container, worker); },
+    mode,
+    onModeChange: (m) => { progressionModeByWorker[worker.id] = m; renderWorkerMonthSection(container, worker); },
   });
 }
 

@@ -6,12 +6,15 @@
   --ink-soft: #5B6B72;
   --line: #DCD7C8;
   --accent: #2F6F5E;
+  --accent-strong: #1F5445;
   --accent-soft: #E4EEEA;
   --rust: #B5502D;
   --rust-soft: #F4E4DC;
-  --shadow-sm: 0 1px 2px rgba(28,43,51,0.05), 0 1px 3px rgba(28,43,51,0.05);
-  --shadow-md: 0 8px 24px rgba(28,43,51,0.08), 0 2px 6px rgba(28,43,51,0.05);
-  --radius: 12px;
+  --shadow-sm: 0 1px 2px rgba(28,43,51,0.06), 0 1px 3px rgba(28,43,51,0.05);
+  --shadow-md: 0 10px 28px rgba(28,43,51,0.10), 0 2px 8px rgba(28,43,51,0.06);
+  --shadow-lg: 0 20px 48px rgba(28,43,51,0.16), 0 4px 14px rgba(28,43,51,0.08);
+  --radius: 18px;
+  --radius-sm: 10px;
 }
 /* Dark mode: an explicit choice via [data-theme] always wins over the OS setting in
    either direction — the media-query block only applies when nothing's been chosen yet. */
@@ -24,11 +27,13 @@
     --ink-soft: #9BA6AA;
     --line: #333B3D;
     --accent: #4FA98A;
+    --accent-strong: #6FC2A3;
     --accent-soft: #1F3730;
     --rust: #E08A5D;
     --rust-soft: #3A2620;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.25);
-    --shadow-md: 0 8px 24px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.3);
+    --shadow-md: 0 10px 28px rgba(0,0,0,0.42), 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-lg: 0 20px 48px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.35);
   }
 }
 :root[data-theme="dark"]{
@@ -39,11 +44,13 @@
   --ink-soft: #9BA6AA;
   --line: #333B3D;
   --accent: #4FA98A;
+  --accent-strong: #6FC2A3;
   --accent-soft: #1F3730;
   --rust: #E08A5D;
   --rust-soft: #3A2620;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.25);
-  --shadow-md: 0 8px 24px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.3);
+  --shadow-md: 0 10px 28px rgba(0,0,0,0.42), 0 2px 8px rgba(0,0,0,0.3);
+  --shadow-lg: 0 20px 48px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.35);
 }
 *{ box-sizing: border-box; }
 html,body{ margin:0; padding:0; }
@@ -82,7 +89,7 @@ body{
 .hamburger-btn{
   background: none;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   width: 36px;
   height: 36px;
   font-size: 16px;
@@ -124,6 +131,28 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   border-radius: 4px;
 }
 
+/* Every <select> in the app is themed from here, so a new one added anywhere (modals,
+   add-entry rows, etc.) automatically matches both themes instead of falling back to the
+   browser's default white box, which would look broken in dark mode. */
+select{
+  font-family: 'Inter', sans-serif;
+  background: var(--paper-card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.field select{ width: 100%; }
+
+/* Same reasoning as the global select rule above — every text/number/date/password input
+   needs an explicit background+color or it renders as a plain white box in dark mode. */
+input[type="text"], input[type="password"], input[type="number"], input[type="date"]{
+  background: var(--paper-card);
+  color: var(--ink);
+}
+
 /* Sidebar */
 .sidebar{
   width: 260px;
@@ -140,9 +169,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 }
 .brand{
   font-family: 'Fraunces', serif;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 .brand small{
   display:block;
@@ -163,16 +192,21 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 }
 .worker-list li{
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor:pointer;
   font-size:14px;
   font-weight:500;
   color: var(--ink-soft);
   display:flex; justify-content:space-between; align-items:center;
-  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
-.worker-list li:hover{ background: var(--accent-soft); color: var(--ink); }
-.worker-list li.active{ background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(47,111,94,0.3); }
+.worker-list li:hover{ background: var(--accent-soft); color: var(--ink); transform: translateX(2px); }
+.worker-list li.active{
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(47,111,94,0.35);
+  transform: none;
+}
 .worker-list li .hrs{
   font-family:'IBM Plex Mono', monospace;
   font-size:11px;
@@ -181,36 +215,38 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .add-worker-btn{
   width:100%;
   padding: 10px;
-  border-radius:6px;
-  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  border: 1.5px dashed var(--line);
   background: transparent;
   color: var(--ink-soft);
   font-family:'Inter', sans-serif;
   font-size:13px;
   font-weight:600;
   cursor:pointer;
-  transition: border-color .15s ease, color .15s ease;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
 }
-.add-worker-btn:hover{ border-color: var(--accent); color: var(--accent); }
+.add-worker-btn:hover{ border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 .settings-toggle{
   font-size:12px;
+  font-weight: 600;
   color: var(--ink-soft);
   cursor:pointer;
-  text-decoration: underline;
-  text-decoration-color: var(--line);
-  text-underline-offset: 3px;
-  background:none; border:none; padding:0; text-align:left;
+  background:none; border:none;
+  padding: 5px 8px;
+  text-align:left;
   font-family:'Inter', sans-serif;
-  display:block;
+  display:inline-block;
+  border-radius: 8px;
+  transition: background .15s ease, color .15s ease;
 }
-.settings-toggle:hover{ color: var(--ink); }
+.settings-toggle:hover{ color: var(--ink); background: var(--accent-soft); }
 
 /* Main */
 .main{
   flex:1;
-  padding: 32px 40px;
-  max-width: 960px;
+  padding: 36px 44px;
+  max-width: 1020px;
 }
 
 /* Mobile sidebar drawer — placed after every base rule it overrides (.sidebar, .worker-list,
@@ -254,10 +290,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 }
 .worker-header h1{
   font-family:'Fraunces', serif;
-  font-size: 30px;
+  font-size: 32px;
   font-weight:600;
   margin:0;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 .worker-header .sub{
   font-size:13px;
@@ -273,7 +309,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   width: 54px;
   font-family:'IBM Plex Mono', monospace;
   border:1px solid var(--line);
-  border-radius:5px;
+  border-radius: var(--radius-sm);
   padding:5px 6px;
   text-align:right;
   font-size:13px;
@@ -412,7 +448,7 @@ tbody tr:hover{ background: var(--surface-soft); }
   flex:1;
   min-width: 140px;
   padding: 9px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   font-family:'Inter', sans-serif;
   font-size: 13px;
@@ -431,7 +467,7 @@ tbody tr:hover{ background: var(--surface-soft); }
 .add-entry-row input{
   font-family:'IBM Plex Mono', monospace;
   border:1px solid var(--line);
-  border-radius:6px;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   font-size:13px;
 }
@@ -443,20 +479,20 @@ tbody tr:hover{ background: var(--surface-soft); }
 .add-entry-row input[name="date"]{ width: 150px; }
 .add-entry-row input[name="hours"]{ width: 90px; }
 .btn-primary{
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   color:#fff;
   border:none;
-  padding: 9px 16px;
-  border-radius:8px;
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
   font-family:'Inter', sans-serif;
   font-weight:600;
   font-size:13px;
   cursor:pointer;
-  box-shadow: 0 1px 2px rgba(47,111,94,0.2);
+  box-shadow: 0 2px 6px rgba(47,111,94,0.25);
   transition: opacity .15s ease, transform .15s ease, box-shadow .15s ease;
 }
-.btn-primary:hover{ opacity:0.92; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(47,111,94,0.25); }
-.btn-primary:active{ transform: translateY(0); box-shadow: 0 1px 2px rgba(47,111,94,0.2); }
+.btn-primary:hover{ opacity:0.94; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(47,111,94,0.3); }
+.btn-primary:active{ transform: translateY(0); box-shadow: 0 2px 6px rgba(47,111,94,0.25); }
 .btn-primary:disabled{ opacity:0.6; cursor:default; transform:none; box-shadow:none; }
 
 .empty-entries{
@@ -503,10 +539,12 @@ tbody tr:hover{ background: var(--surface-soft); }
 .field input{
   width:100%;
   padding: 9px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   font-family:'Inter', sans-serif;
   font-size:14px;
+  background: var(--paper-card);
+  color: var(--ink);
 }
 .field .hint{
   font-size: 11px;
@@ -521,7 +559,7 @@ tbody tr:hover{ background: var(--surface-soft); }
   background:none;
   border: 1px solid var(--line);
   padding: 9px 16px;
-  border-radius:8px;
+  border-radius: var(--radius-sm);
   font-family:'Inter', sans-serif;
   font-weight:600;
   font-size:13px;
@@ -549,7 +587,7 @@ tbody tr:hover{ background: var(--surface-soft); }
   width: 90px;
   font-family:'IBM Plex Mono', monospace;
   border:1px solid var(--line);
-  border-radius:5px;
+  border-radius: var(--radius-sm);
   padding: 6px 8px;
   font-size:13px;
   color: var(--ink);
@@ -600,8 +638,9 @@ tbody tr:hover{ background: var(--surface-soft); }
 .wv-header{ margin-bottom: 6px; }
 .wv-title{
   font-family:'Fraunces', serif;
-  font-size: 28px;
+  font-size: 30px;
   font-weight:600;
+  letter-spacing: -0.02em;
   margin: 10px 0 2px;
 }
 .wv-sub{
@@ -681,7 +720,7 @@ tbody tr:hover{ background: var(--surface-soft); }
 .wv-picker li{
   background: var(--paper-card);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
   padding: 14px 16px;
   cursor:pointer;
@@ -705,7 +744,7 @@ tbody tr:hover{ background: var(--surface-soft); }
 .theme-toggle-btn{
   background: none;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   width: 34px;
   height: 34px;
   font-size: 15px;
@@ -734,14 +773,35 @@ tbody tr:hover{ background: var(--surface-soft); }
   margin: 0;
 }
 .month-select{
-  font-family:'Inter', sans-serif;
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+}
+
+/* Two-way pill toggle (e.g. Daily / Overall on the progression charts) */
+.segmented{
+  display: inline-flex;
+  background: var(--surface-soft);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 7px 10px;
-  color: var(--ink);
-  background: var(--paper-card);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+.segmented-btn{
+  background: none;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
   cursor: pointer;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.segmented-btn:hover{ color: var(--ink); }
+.segmented-btn.active{
+  background: var(--paper-card);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
 }
 .chart-pair{
   display:grid;

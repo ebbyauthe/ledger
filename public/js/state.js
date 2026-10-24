@@ -161,10 +161,12 @@ export function calcAllPeriodsTotals(){
 
 /* ---------------- Calendar-month progression (separate from admin-defined periods above) ---------------- */
 
-// Cumulative day-by-day progression through a calendar month, for the "This month" chart.
-// entries: [{ date, hours, workerPay }] — the caller resolves workerPay however's appropriate
-// for its context (via calcEntryRow for admin views, or already-computed for the worker-facing
-// view), so this stays a simple, shared aggregator. yearMonth is a "YYYY-MM" string.
+// Day-by-day progression through a calendar month, for the "This month" chart. Returns both
+// a "daily" series (that day's own hours/pay — drops back down on a lighter day, 0 on a day
+// with nothing logged) and an "overall" cumulative running-total series, so the UI can toggle
+// between the two without recomputing. entries: [{ date, hours, workerPay }] — the caller
+// resolves workerPay however's appropriate for its context (via calcEntryRow for admin views,
+// or already-computed for the worker-facing view). yearMonth is a "YYYY-MM" string.
 export function calcMonthlyProgression(entries, yearMonth){
   const [year, month] = yearMonth.split('-').map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -181,15 +183,21 @@ export function calcMonthlyProgression(entries, yearMonth){
     payByDay[day] += e.workerPay;
   });
 
-  const hoursPoints = [], payPoints = [];
+  const dailyHoursPoints = [], dailyPayPoints = [], hoursPoints = [], payPoints = [];
   let cumHours = 0, cumPay = 0;
   for(let d = 1; d <= lastDay; d++){
-    cumHours += hoursByDay[d];
-    cumPay += payByDay[d];
-    hoursPoints.push({ x: d, y: cumHours, hasEntry: hoursByDay[d] > 0 });
-    payPoints.push({ x: d, y: cumPay, hasEntry: payByDay[d] > 0 });
+    const dh = hoursByDay[d], dp = payByDay[d];
+    cumHours += dh;
+    cumPay += dp;
+    dailyHoursPoints.push({ x: d, y: dh, hasEntry: dh > 0 });
+    dailyPayPoints.push({ x: d, y: dp, hasEntry: dp > 0 });
+    hoursPoints.push({ x: d, y: cumHours, hasEntry: dh > 0 });
+    payPoints.push({ x: d, y: cumPay, hasEntry: dp > 0 });
   }
-  return { hoursPoints, payPoints, totalHours: cumHours, totalPay: cumPay, daysInMonth, lastDay };
+  return {
+    dailyHoursPoints, dailyPayPoints, hoursPoints, payPoints,
+    totalHours: cumHours, totalPay: cumPay, daysInMonth, lastDay,
+  };
 }
 
 // Every month with at least one entry, plus the current real month (so the dropdown is never

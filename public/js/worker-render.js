@@ -13,6 +13,7 @@ let workerViewTab = 'overview';
 let workerViewSlug = null;
 let workerViewBadSlug = false;
 let selectedMonthWorker = new Date().toISOString().slice(0, 7);
+let progressionModeWorker = 'daily';
 
 function themeToggleHtml(){
   return `<button class="theme-toggle-btn" id="wvThemeToggle" aria-label="Toggle dark mode">${getTheme() === 'dark' ? '☀️' : '🌙'}</button>`;
@@ -404,6 +405,8 @@ function paintWorkerSummary(){
 
 // This worker's own hours/pay progression for a selected calendar month — never another
 // worker's, since workerSummary only ever contains the signed-in worker's own entries.
+// mode 'daily' shows that day's own hours/pay (drops back down on a lighter day); 'overall'
+// shows the cumulative running total through the month.
 function renderWorkerOwnMonthSection(){
   const container = document.getElementById('workerOwnMonthSection');
   if(!container || !workerSummary) return;
@@ -411,22 +414,31 @@ function renderWorkerOwnMonthSection(){
   const months = getAvailableMonths(entries);
   const month = months.includes(selectedMonthWorker) ? selectedMonthWorker : months[0];
   const progression = calcMonthlyProgression(entries, month);
+  const hoursPoints = progressionModeWorker === 'overall' ? progression.hoursPoints : progression.dailyHoursPoints;
+  const payPoints = progressionModeWorker === 'overall' ? progression.payPoints : progression.dailyPayPoints;
+
   container.innerHTML = `
     <div class="progression-section">
       <div class="progression-header">
         <h2>${escapeHtml(monthLabel(month))}</h2>
-        <select class="month-select" id="workerMonthSelect">
-          ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${escapeHtml(monthLabel(m))}</option>`).join('')}
-        </select>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="segmented" id="workerProgressionModeToggle">
+            <button type="button" class="segmented-btn ${progressionModeWorker === 'daily' ? 'active' : ''}" data-mode="daily">Daily</button>
+            <button type="button" class="segmented-btn ${progressionModeWorker === 'overall' ? 'active' : ''}" data-mode="overall">Overall</button>
+          </div>
+          <select class="month-select" id="workerMonthSelect">
+            ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${escapeHtml(monthLabel(m))}</option>`).join('')}
+          </select>
+        </div>
       </div>
       <div class="chart-pair">
         <div class="chart-card">
-          <div class="chart-card-title">Hours</div>
+          <div class="chart-card-title">${progressionModeWorker === 'overall' ? 'Total hours' : 'Hours per day'}</div>
           <div class="chart-card-total">${progression.totalHours.toFixed(1)}h</div>
           <div id="workerHoursChart"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-card-title">Pay</div>
+          <div class="chart-card-title">${progressionModeWorker === 'overall' ? 'Total pay' : 'Pay per day'}</div>
           <div class="chart-card-total">${fmtCAD(progression.totalPay)}</div>
           <div id="workerPayChart"></div>
         </div>
@@ -434,15 +446,21 @@ function renderWorkerOwnMonthSection(){
     </div>
   `;
   renderProgressionChart(container.querySelector('#workerHoursChart'), {
-    points: progression.hoursPoints, daysInMonth: progression.daysInMonth,
+    points: hoursPoints, daysInMonth: progression.daysInMonth,
     colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet this month',
   });
   renderProgressionChart(container.querySelector('#workerPayChart'), {
-    points: progression.payPoints, daysInMonth: progression.daysInMonth,
+    points: payPoints, daysInMonth: progression.daysInMonth,
     colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet this month',
   });
   container.querySelector('#workerMonthSelect').onchange = (e) => {
     selectedMonthWorker = e.target.value;
     renderWorkerOwnMonthSection();
   };
+  container.querySelectorAll('.segmented-btn').forEach(btn => {
+    btn.onclick = () => {
+      progressionModeWorker = btn.dataset.mode;
+      renderWorkerOwnMonthSection();
+    };
+  });
 }
