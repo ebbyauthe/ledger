@@ -3,7 +3,7 @@ import {
   state, replaceState, SHARE_DEFAULT, RATE_DEFAULT, TAX_DEFAULT, OVERVIEW_ID, MONTHLY_ID, JOBS_ID,
   calcWorkerTotals, calcAllWorkersTotals, isWorkerClockedIn, calcEntryRow, findJob,
   groupEntriesByPeriod, currentPeriod, calcAllPeriodsTotals, computePaymentDate,
-  calcMonthlyProgression, getAvailableMonths, monthLabel, calcMonthTotals,
+  calcMonthlyProgression, getAvailableMonths, monthLabel, calcMonthTotals, calcAllMonthsTotals,
 } from './state.js';
 import { fmtCAD, fmtNGN, fmtDuration, fmtClockBoth, fmtDayTZ, fmtWhenCell, fmtPaymentDate, fmtDateLong, escapeHtml, TZ_QC } from './format.js';
 import { openModal, modalOpen } from './modal.js';
@@ -759,53 +759,76 @@ function renderMain(){
 
 // Shared by the team-wide overview and each worker's own Overview tab. entries: [{ date,
 // hours, workerPay }]. extraHtml (optional) renders above the charts — used by the team view
-// for its "all metrics" stat-tile row. mode is 'daily' (that day's own hours/pay — drops back
-// down on a lighter day) or 'overall' (cumulative running total through the month).
+// for its "all metrics" stat-tile row. mode is 'daily' (that day's own hours/pay within the
+// selected month — drops back down on a lighter day) or 'overall' (each month's own total,
+// across every month with data, so trends across months are visible too).
 function renderMonthProgression(container, entries, { selectedMonth, onMonthChange, mode, onModeChange, extraHtml }){
+  const isOverall = mode === 'overall';
   const months = getAvailableMonths(entries);
   const month = months.includes(selectedMonth) ? selectedMonth : months[0];
-  const progression = calcMonthlyProgression(entries, month);
-  const hoursPoints = mode === 'overall' ? progression.hoursPoints : progression.dailyHoursPoints;
-  const payPoints = mode === 'overall' ? progression.payPoints : progression.dailyPayPoints;
+
+  let hoursPoints, payPoints, xMax, totalHours, totalPay, formatX, titleHtml;
+  if(isOverall){
+    const allMonths = calcAllMonthsTotals(entries);
+    hoursPoints = allMonths.hoursPoints;
+    payPoints = allMonths.payPoints;
+    xMax = allMonths.xMax;
+    totalHours = allMonths.totalHours;
+    totalPay = allMonths.totalPay;
+    formatX = (x) => monthLabel(allMonths.months[x - 1]);
+    titleHtml = `<h2>All months</h2>`;
+  }else{
+    const progression = calcMonthlyProgression(entries, month);
+    hoursPoints = progression.dailyHoursPoints;
+    payPoints = progression.dailyPayPoints;
+    xMax = progression.daysInMonth;
+    totalHours = progression.totalHours;
+    totalPay = progression.totalPay;
+    formatX = (x) => `Day ${x}`;
+    titleHtml = `<h2>${escapeHtml(monthLabel(month))}</h2>`;
+  }
 
   container.innerHTML = `
     <div class="progression-section">
       <div class="progression-header">
-        <h2>${escapeHtml(monthLabel(month))}</h2>
+        ${titleHtml}
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <div class="segmented" id="progressionModeToggle">
-            <button type="button" class="segmented-btn ${mode === 'daily' ? 'active' : ''}" data-mode="daily">Daily</button>
-            <button type="button" class="segmented-btn ${mode === 'overall' ? 'active' : ''}" data-mode="overall">Overall</button>
+            <button type="button" class="segmented-btn ${!isOverall ? 'active' : ''}" data-mode="daily">Daily</button>
+            <button type="button" class="segmented-btn ${isOverall ? 'active' : ''}" data-mode="overall">Overall</button>
           </div>
+          ${isOverall ? '' : `
           <select class="month-select" id="progressionMonthSelect">
             ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${escapeHtml(monthLabel(m))}</option>`).join('')}
           </select>
+          `}
         </div>
       </div>
       ${extraHtml || ''}
       <div class="chart-pair">
         <div class="chart-card">
-          <div class="chart-card-title">${mode === 'overall' ? 'Total hours' : 'Hours per day'}</div>
-          <div class="chart-card-total">${progression.totalHours.toFixed(1)}h</div>
+          <div class="chart-card-title">${isOverall ? 'Hours per month' : 'Hours per day'}</div>
+          <div class="chart-card-total">${totalHours.toFixed(1)}h</div>
           <div id="progressionHoursChart"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-card-title">${mode === 'overall' ? 'Total pay' : 'Pay per day'}</div>
-          <div class="chart-card-total">${fmtCAD(progression.totalPay)}</div>
+          <div class="chart-card-title">${isOverall ? 'Pay per month' : 'Pay per day'}</div>
+          <div class="chart-card-total">${fmtCAD(totalPay)}</div>
           <div id="progressionPayChart"></div>
         </div>
       </div>
     </div>
   `;
   renderProgressionChart(container.querySelector('#progressionHoursChart'), {
-    points: hoursPoints, daysInMonth: progression.daysInMonth,
-    colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet this month',
+    points: hoursPoints, xMax, formatX,
+    colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet',
   });
   renderProgressionChart(container.querySelector('#progressionPayChart'), {
-    points: payPoints, daysInMonth: progression.daysInMonth,
-    colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet this month',
+    points: payPoints, xMax, formatX,
+    colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet',
   });
-  container.querySelector('#progressionMonthSelect').onchange = (e) => onMonthChange(e.target.value);
+  const monthSelect = container.querySelector('#progressionMonthSelect');
+  if(monthSelect) monthSelect.onchange = (e) => onMonthChange(e.target.value);
   container.querySelectorAll('.segmented-btn').forEach(btn => {
     btn.onclick = () => onModeChange(btn.dataset.mode);
   });
@@ -825,7 +848,10 @@ function buildTeamMonthEntries(){
 
 function renderTeamMonthSection(container){
   const { list, withShare } = buildTeamMonthEntries();
-  const monthTotals = calcMonthTotals(withShare, selectedMonthTeam);
+  // In "Overall" mode the charts span every month, so the stat row should too — reuse the
+  // existing all-time aggregator rather than one specific month's totals.
+  const isOverall = progressionModeTeam === 'overall';
+  const monthTotals = isOverall ? calcAllWorkersTotals() : calcMonthTotals(withShare, selectedMonthTeam);
   const statsHtml = `
     <div class="receipt">
       <div class="receipt-grid">

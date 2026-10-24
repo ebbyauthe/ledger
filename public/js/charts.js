@@ -1,23 +1,26 @@
 // Hand-rolled inline SVG line chart — no charting library (the app has zero frontend
 // dependencies by design, and the default Helmet CSP would block a CDN script anyway).
-// Single series only: a cumulative day-by-day progression through a calendar month.
+// Single series only. x is a generic 1..xMax index — the caller decides what it means
+// (day-of-month for the "Daily" view, or month-index for the "Overall" view) and supplies
+// formatX to label it in the hover tooltip accordingly.
 
 const WIDTH = 520, HEIGHT = 170;
 const PAD_L = 42, PAD_R = 10, PAD_T = 10, PAD_B = 10;
 const PLOT_W = WIDTH - PAD_L - PAD_R;
 const PLOT_H = HEIGHT - PAD_T - PAD_B;
 
-// points: [{ x: dayOfMonth, y: cumulativeValue, hasEntry: bool }], already truncated to
-// "today" by the caller for the current month. daysInMonth scales the x-axis so the chart
-// always spans the whole month's width even when points stop partway through it.
-export function renderProgressionChart(container, { points, daysInMonth, colorVar, formatValue, emptyLabel }){
+// points: [{ x: 1..xMax, y: value, hasEntry: bool }]. xMax scales the x-axis so the chart
+// always spans its full domain even when points stop partway through it (e.g. "today" for
+// the current month in Daily mode).
+export function renderProgressionChart(container, { points, xMax, colorVar, formatValue, formatX, emptyLabel }){
   if(!points || !points.length){
     container.innerHTML = `<div class="chart-empty">${emptyLabel || 'No data yet'}</div>`;
     return;
   }
+  const labelX = formatX || (x => `Day ${x}`);
 
   const maxY = Math.max(1, ...points.map(p => p.y));
-  const xScale = day => PAD_L + ((day - 1) / Math.max(1, daysInMonth - 1)) * PLOT_W;
+  const xScale = x => PAD_L + ((x - 1) / Math.max(1, xMax - 1)) * PLOT_W;
   const yScale = val => PAD_T + PLOT_H - (val / maxY) * PLOT_H;
 
   const linePoints = points.map(p => `${xScale(p.x).toFixed(1)},${yScale(p.y).toFixed(1)}`).join(' L ');
@@ -64,7 +67,7 @@ export function renderProgressionChart(container, { points, daysInMonth, colorVa
     hoverLine.style.opacity = '1';
     hoverDot.setAttribute('cx', x); hoverDot.setAttribute('cy', y);
     hoverDot.style.opacity = '1';
-    tooltip.textContent = `Day ${point.x} · ${formatValue(point.y)}`;
+    tooltip.textContent = `${labelX(point.x)} · ${formatValue(point.y)}`;
     const svgRect = svg.getBoundingClientRect();
     tooltip.style.left = ((x / WIDTH) * svgRect.width) + 'px';
     tooltip.style.top = ((y / HEIGHT) * svgRect.height - 8) + 'px';
@@ -79,9 +82,9 @@ export function renderProgressionChart(container, { points, daysInMonth, colorVa
   wrap.addEventListener('pointermove', (e) => {
     const svgRect = svg.getBoundingClientRect();
     const svgX = ((e.clientX - svgRect.left) / svgRect.width) * WIDTH;
-    const day = Math.round(((svgX - PAD_L) / PLOT_W) * (daysInMonth - 1)) + 1;
-    const clampedDay = Math.max(points[0].x, Math.min(points[points.length - 1].x, day));
-    const point = points.find(p => p.x === clampedDay) || points[points.length - 1];
+    const x = Math.round(((svgX - PAD_L) / PLOT_W) * (xMax - 1)) + 1;
+    const clampedX = Math.max(points[0].x, Math.min(points[points.length - 1].x, x));
+    const point = points.find(p => p.x === clampedX) || points[points.length - 1];
     if(point) show(point);
   });
   wrap.addEventListener('pointerleave', hide);

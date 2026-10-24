@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { groupEntriesByPeriod, calcMonthlyProgression, getAvailableMonths, monthLabel } from './state.js';
+import { groupEntriesByPeriod, calcMonthlyProgression, getAvailableMonths, monthLabel, calcAllMonthsTotals } from './state.js';
 import { fmtCAD, fmtNGN, fmtElapsedLive, fmtDuration, fmtWhenCell, escapeHtml } from './format.js';
 import { openModal } from './modal.js';
 import { renderProgressionChart } from './charts.js';
@@ -403,57 +403,79 @@ function paintWorkerSummary(){
   };
 }
 
-// This worker's own hours/pay progression for a selected calendar month — never another
-// worker's, since workerSummary only ever contains the signed-in worker's own entries.
-// mode 'daily' shows that day's own hours/pay (drops back down on a lighter day); 'overall'
-// shows the cumulative running total through the month.
+// This worker's own hours/pay progression — never another worker's, since workerSummary only
+// ever contains the signed-in worker's own entries. mode 'daily' shows that day's own hours/
+// pay within the selected month (drops back down on a lighter day); 'overall' shows each
+// month's own total across every month with data, so trends across months are visible too.
 function renderWorkerOwnMonthSection(){
   const container = document.getElementById('workerOwnMonthSection');
   if(!container || !workerSummary) return;
   const entries = (workerSummary.entries || []).map(e => ({ date: e.date, hours: e.hours, workerPay: e.workerPay }));
+  const isOverall = progressionModeWorker === 'overall';
   const months = getAvailableMonths(entries);
   const month = months.includes(selectedMonthWorker) ? selectedMonthWorker : months[0];
-  const progression = calcMonthlyProgression(entries, month);
-  const hoursPoints = progressionModeWorker === 'overall' ? progression.hoursPoints : progression.dailyHoursPoints;
-  const payPoints = progressionModeWorker === 'overall' ? progression.payPoints : progression.dailyPayPoints;
+
+  let hoursPoints, payPoints, xMax, totalHours, totalPay, formatX, titleHtml;
+  if(isOverall){
+    const allMonths = calcAllMonthsTotals(entries);
+    hoursPoints = allMonths.hoursPoints;
+    payPoints = allMonths.payPoints;
+    xMax = allMonths.xMax;
+    totalHours = allMonths.totalHours;
+    totalPay = allMonths.totalPay;
+    formatX = (x) => monthLabel(allMonths.months[x - 1]);
+    titleHtml = `<h2>All months</h2>`;
+  }else{
+    const progression = calcMonthlyProgression(entries, month);
+    hoursPoints = progression.dailyHoursPoints;
+    payPoints = progression.dailyPayPoints;
+    xMax = progression.daysInMonth;
+    totalHours = progression.totalHours;
+    totalPay = progression.totalPay;
+    formatX = (x) => `Day ${x}`;
+    titleHtml = `<h2>${escapeHtml(monthLabel(month))}</h2>`;
+  }
 
   container.innerHTML = `
     <div class="progression-section">
       <div class="progression-header">
-        <h2>${escapeHtml(monthLabel(month))}</h2>
+        ${titleHtml}
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <div class="segmented" id="workerProgressionModeToggle">
-            <button type="button" class="segmented-btn ${progressionModeWorker === 'daily' ? 'active' : ''}" data-mode="daily">Daily</button>
-            <button type="button" class="segmented-btn ${progressionModeWorker === 'overall' ? 'active' : ''}" data-mode="overall">Overall</button>
+            <button type="button" class="segmented-btn ${!isOverall ? 'active' : ''}" data-mode="daily">Daily</button>
+            <button type="button" class="segmented-btn ${isOverall ? 'active' : ''}" data-mode="overall">Overall</button>
           </div>
+          ${isOverall ? '' : `
           <select class="month-select" id="workerMonthSelect">
             ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${escapeHtml(monthLabel(m))}</option>`).join('')}
           </select>
+          `}
         </div>
       </div>
       <div class="chart-pair">
         <div class="chart-card">
-          <div class="chart-card-title">${progressionModeWorker === 'overall' ? 'Total hours' : 'Hours per day'}</div>
-          <div class="chart-card-total">${progression.totalHours.toFixed(1)}h</div>
+          <div class="chart-card-title">${isOverall ? 'Hours per month' : 'Hours per day'}</div>
+          <div class="chart-card-total">${totalHours.toFixed(1)}h</div>
           <div id="workerHoursChart"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-card-title">${progressionModeWorker === 'overall' ? 'Total pay' : 'Pay per day'}</div>
-          <div class="chart-card-total">${fmtCAD(progression.totalPay)}</div>
+          <div class="chart-card-title">${isOverall ? 'Pay per month' : 'Pay per day'}</div>
+          <div class="chart-card-total">${fmtCAD(totalPay)}</div>
           <div id="workerPayChart"></div>
         </div>
       </div>
     </div>
   `;
   renderProgressionChart(container.querySelector('#workerHoursChart'), {
-    points: hoursPoints, daysInMonth: progression.daysInMonth,
-    colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet this month',
+    points: hoursPoints, xMax, formatX,
+    colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet',
   });
   renderProgressionChart(container.querySelector('#workerPayChart'), {
-    points: payPoints, daysInMonth: progression.daysInMonth,
-    colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet this month',
+    points: payPoints, xMax, formatX,
+    colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet',
   });
-  container.querySelector('#workerMonthSelect').onchange = (e) => {
+  const monthSelect = container.querySelector('#workerMonthSelect');
+  if(monthSelect) monthSelect.onchange = (e) => {
     selectedMonthWorker = e.target.value;
     renderWorkerOwnMonthSection();
   };

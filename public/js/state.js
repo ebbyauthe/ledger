@@ -200,6 +200,26 @@ export function calcMonthlyProgression(entries, yearMonth){
   };
 }
 
+// Totals per calendar month across every month with data, oldest first — the "Overall" view
+// of the progression chart (as opposed to "Daily", which is day-by-day within one month).
+// entries: [{ date, hours, workerPay }].
+export function calcAllMonthsTotals(entries){
+  const byMonth = new Map();
+  entries.forEach(e => {
+    const ym = e.date.slice(0, 7);
+    if(!byMonth.has(ym)) byMonth.set(ym, { hours: 0, pay: 0 });
+    const bucket = byMonth.get(ym);
+    bucket.hours += e.hours;
+    bucket.pay += e.workerPay;
+  });
+  const months = Array.from(byMonth.keys()).sort();
+  const hoursPoints = months.map((m, i) => ({ x: i + 1, y: byMonth.get(m).hours, hasEntry: true }));
+  const payPoints = months.map((m, i) => ({ x: i + 1, y: byMonth.get(m).pay, hasEntry: true }));
+  const totalHours = hoursPoints.reduce((s, p) => s + p.y, 0);
+  const totalPay = payPoints.reduce((s, p) => s + p.y, 0);
+  return { months, hoursPoints, payPoints, totalHours, totalPay, xMax: Math.max(1, months.length) };
+}
+
 // Every month with at least one entry, plus the current real month (so the dropdown is never
 // empty on a fresh account), newest first.
 export function getAvailableMonths(entries){
