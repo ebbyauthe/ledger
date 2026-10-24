@@ -233,6 +233,11 @@ export function monthLabel(yearMonth){
   return new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 }
 
+export function shortMonthLabel(yearMonth){
+  const [year, month] = yearMonth.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'short' });
+}
+
 // Gross/tax/worker-pay/hours for one calendar month, team-wide — feeds the admin's "all
 // metrics" stat-tile row. entriesWithShare: [{ entry, sharePct }].
 export function calcMonthTotals(entriesWithShare, yearMonth){

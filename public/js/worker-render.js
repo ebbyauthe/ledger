@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { groupEntriesByPeriod, calcMonthlyProgression, getAvailableMonths, monthLabel, calcAllMonthsTotals } from './state.js';
+import { groupEntriesByPeriod, calcMonthlyProgression, getAvailableMonths, monthLabel, calcAllMonthsTotals, shortMonthLabel } from './state.js';
 import { fmtCAD, fmtNGN, fmtElapsedLive, fmtDuration, fmtWhenCell, escapeHtml } from './format.js';
 import { openModal } from './modal.js';
 import { renderProgressionChart } from './charts.js';
@@ -179,6 +179,7 @@ function paintWorkerSummary(){
           <p class="fx-note" style="margin-top:8px;">This timer is just a log for Ebenezer — it doesn't add to your logged hours or pay.</p>
         </div>
 
+        <div class="section-title">All time</div>
         <div class="receipt">
           <div class="receipt-grid wv-grid">
             <div class="receipt-item">
@@ -204,7 +205,7 @@ function paintWorkerSummary(){
 
         ${workerViewTab === 'monthly' ? `
           ${periodSummaries.length ? `
-          <div style="margin: 0 0 10px; font-size:13px; font-weight:600; color: var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em;">All-time</div>
+          <div style="margin: 0 0 10px; font-size:20px; font-weight:700; letter-spacing:-0.025em; color: var(--ink);">All-time</div>
           <div class="receipt">
             <div class="receipt-grid wv-grid">
               <div class="receipt-item">
@@ -227,7 +228,7 @@ function paintWorkerSummary(){
             </div>
           </div>
           ${periodSummaries.map(p => `
-          <div style="margin: 20px 0 10px; font-size:13px; font-weight:600; color: var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em;">${escapeHtml(p.period.label)}</div>
+          <div style="margin: 20px 0 10px; font-size:20px; font-weight:700; letter-spacing:-0.025em; color: var(--ink);">${escapeHtml(p.period.label)}</div>
           <div class="receipt">
             <div class="receipt-grid wv-grid">
               <div class="receipt-item">
@@ -256,7 +257,7 @@ function paintWorkerSummary(){
         ${workerViewTab === 'hours' ? `
         <div class="entries-card">
           ${w.entries.length ? entryGroups.map(g => `
-          <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
+          <div style="padding:12px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
             <span>${escapeHtml(g.period.label)}</span>
             <span style="text-transform:none;letter-spacing:normal;">${g.entries.reduce((s,e) => s + e.hours, 0).toFixed(2)}h · ${fmtCAD(g.entries.reduce((s,e) => s + e.workerPay, 0))}</span>
           </div>
@@ -415,7 +416,7 @@ function renderWorkerOwnMonthSection(){
   const months = getAvailableMonths(entries);
   const month = months.includes(selectedMonthWorker) ? selectedMonthWorker : months[0];
 
-  let hoursPoints, payPoints, xMax, totalHours, totalPay, formatX, titleHtml;
+  let hoursPoints, payPoints, xMax, totalHours, totalPay, formatX, formatTick, titleHtml;
   if(isOverall){
     const allMonths = calcAllMonthsTotals(entries);
     hoursPoints = allMonths.hoursPoints;
@@ -424,6 +425,7 @@ function renderWorkerOwnMonthSection(){
     totalHours = allMonths.totalHours;
     totalPay = allMonths.totalPay;
     formatX = (x) => monthLabel(allMonths.months[x - 1]);
+    formatTick = (x) => shortMonthLabel(allMonths.months[x - 1]);
     titleHtml = `<h2>All months</h2>`;
   }else{
     const progression = calcMonthlyProgression(entries, month);
@@ -467,12 +469,12 @@ function renderWorkerOwnMonthSection(){
     </div>
   `;
   renderProgressionChart(container.querySelector('#workerHoursChart'), {
-    points: hoursPoints, xMax, formatX,
+    points: hoursPoints, xMax, formatX, formatTick,
     colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet',
   });
   renderProgressionChart(container.querySelector('#workerPayChart'), {
-    points: payPoints, xMax, formatX,
-    colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet',
+    points: payPoints, xMax, formatX, formatTick,
+    colorVar: '--positive', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet',
   });
   const monthSelect = container.querySelector('#workerMonthSelect');
   if(monthSelect) monthSelect.onchange = (e) => {

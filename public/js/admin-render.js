@@ -3,7 +3,7 @@ import {
   state, replaceState, SHARE_DEFAULT, RATE_DEFAULT, TAX_DEFAULT, OVERVIEW_ID, MONTHLY_ID, JOBS_ID,
   calcWorkerTotals, calcAllWorkersTotals, isWorkerClockedIn, calcEntryRow, findJob,
   groupEntriesByPeriod, currentPeriod, calcAllPeriodsTotals, computePaymentDate,
-  calcMonthlyProgression, getAvailableMonths, monthLabel, calcMonthTotals, calcAllMonthsTotals,
+  calcMonthlyProgression, getAvailableMonths, monthLabel, calcMonthTotals, calcAllMonthsTotals, shortMonthLabel,
 } from './state.js';
 import { fmtCAD, fmtNGN, fmtDuration, fmtClockBoth, fmtDayTZ, fmtWhenCell, fmtPaymentDate, fmtDateLong, escapeHtml, TZ_QC } from './format.js';
 import { openModal, modalOpen } from './modal.js';
@@ -352,6 +352,7 @@ function renderMain(){
 
     ${adminWorkerTab === 'overview' ? `
     <div id="workerMonthSection"></div>
+    <div class="section-title">All time</div>
     <div class="receipt">
       <div class="receipt-grid">
         <div class="receipt-item">
@@ -410,7 +411,7 @@ function renderMain(){
         const groupWorkerPay = g.entries.reduce((s,e) => s + calcEntryRow(e, worker.sharePercent).workerPay, 0);
         const groupHasUnpaid = g.entries.some(e => !e.paid);
         return `
-      <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="padding:12px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
         <span>${escapeHtml(g.period.label)}</span>
         <span style="display:flex;align-items:center;gap:10px;text-transform:none;letter-spacing:normal;">
           ${groupHours.toFixed(2)}h · ${fmtCAD(groupWorkerPay)}
@@ -459,7 +460,7 @@ function renderMain(){
 
     ${adminWorkerTab === 'payments' ? `
     <div class="entries-card">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
         <span>Payments logged <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— typing an amount marks whichever unpaid entries add up to it as paid</span></span>
         ${payments.length ? `<span style="text-transform:none;letter-spacing:normal;font-weight:600;color:var(--ink);">${fmtCAD(paymentsTotal)}</span>` : ''}
       </div>
@@ -492,7 +493,7 @@ function renderMain(){
 
     ${adminWorkerTab === 'timer' ? `
     <div class="entries-card">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);">
         Timer log <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— self-reported by ${escapeHtml(worker.name)}, informational only, doesn't affect hours or pay</span>
       </div>
       ${timerSessions.length ? `
@@ -767,7 +768,7 @@ function renderMonthProgression(container, entries, { selectedMonth, onMonthChan
   const months = getAvailableMonths(entries);
   const month = months.includes(selectedMonth) ? selectedMonth : months[0];
 
-  let hoursPoints, payPoints, xMax, totalHours, totalPay, formatX, titleHtml;
+  let hoursPoints, payPoints, xMax, totalHours, totalPay, formatX, formatTick, titleHtml;
   if(isOverall){
     const allMonths = calcAllMonthsTotals(entries);
     hoursPoints = allMonths.hoursPoints;
@@ -776,6 +777,7 @@ function renderMonthProgression(container, entries, { selectedMonth, onMonthChan
     totalHours = allMonths.totalHours;
     totalPay = allMonths.totalPay;
     formatX = (x) => monthLabel(allMonths.months[x - 1]);
+    formatTick = (x) => shortMonthLabel(allMonths.months[x - 1]);
     titleHtml = `<h2>All months</h2>`;
   }else{
     const progression = calcMonthlyProgression(entries, month);
@@ -820,12 +822,12 @@ function renderMonthProgression(container, entries, { selectedMonth, onMonthChan
     </div>
   `;
   renderProgressionChart(container.querySelector('#progressionHoursChart'), {
-    points: hoursPoints, xMax, formatX,
+    points: hoursPoints, xMax, formatX, formatTick,
     colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet',
   });
   renderProgressionChart(container.querySelector('#progressionPayChart'), {
-    points: payPoints, xMax, formatX,
-    colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet',
+    points: payPoints, xMax, formatX, formatTick,
+    colorVar: '--positive', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet',
   });
   const monthSelect = container.querySelector('#progressionMonthSelect');
   if(monthSelect) monthSelect.onchange = (e) => onMonthChange(e.target.value);
@@ -848,11 +850,11 @@ function buildTeamMonthEntries(){
 
 function renderTeamMonthSection(container){
   const { list, withShare } = buildTeamMonthEntries();
-  // In "Overall" mode the charts span every month, so the stat row should too — reuse the
-  // existing all-time aggregator rather than one specific month's totals.
+  // In "Overall" mode the month stat row is skipped — it would just duplicate the "All time"
+  // card that already sits right below this section.
   const isOverall = progressionModeTeam === 'overall';
-  const monthTotals = isOverall ? calcAllWorkersTotals() : calcMonthTotals(withShare, selectedMonthTeam);
-  const statsHtml = `
+  const monthTotals = calcMonthTotals(withShare, selectedMonthTeam);
+  const statsHtml = isOverall ? '' : `
     <div class="receipt">
       <div class="receipt-grid">
         <div class="receipt-item"><div class="label">Hours logged</div><div class="value">${monthTotals.totalHours.toFixed(1)}</div></div>
@@ -905,6 +907,7 @@ function renderOverviewMain(main){
     </div>
 
     <div id="teamMonthSection"></div>
+    <div class="section-title">All time</div>
 
     <div class="receipt">
       <div class="receipt-grid">
@@ -966,7 +969,7 @@ function renderOverviewMain(main){
     </div>
 
     <div class="entries-card" style="margin-top:16px;">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);">
         Timer activity <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— self-reported, informational only, doesn't affect hours or pay</span>
       </div>
       ${timerRows.length ? `
@@ -991,7 +994,7 @@ function renderMonthlyMain(main){
   const periodRows = calcAllPeriodsTotals();
 
   const receiptCard = (label, t, paymentDate) => `
-    <div style="margin: 20px 0 10px; font-size:13px; font-weight:600; color: var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em;">${escapeHtml(label)}</div>
+    <div style="margin: 20px 0 10px; font-size:20px; font-weight:700; letter-spacing:-0.025em; color: var(--ink);">${escapeHtml(label)}</div>
     <div class="receipt">
       <div class="receipt-grid">
         <div class="receipt-item">
