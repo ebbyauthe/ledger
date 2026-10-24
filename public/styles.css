@@ -84,7 +84,8 @@ body{
   color: var(--ink);
   font-family: var(--font);
   font-size: 15px;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
+  font-optical-sizing: auto;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -145,7 +146,7 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
   font-family: var(--font-display);
   font-size: 17px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 .sidebar-backdrop{
   display: none;
@@ -159,13 +160,13 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
 .payment-banner{
   padding: 12px 24px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   text-align: center;
   background: var(--accent-soft);
   color: var(--ink);
 }
 .payment-banner.overdue{ background: var(--rust-soft); }
-.payment-banner strong{ font-weight: 600; }
+.payment-banner strong{ font-weight: 500; }
 
 /* Sidebar — translucent, macOS-style */
 .sidebar{
@@ -187,8 +188,8 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
 .brand{
   font-family: var(--font-display);
   font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   padding: 0 8px;
 }
 .brand small{
@@ -212,7 +213,7 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
   border-radius: 8px;
   cursor:pointer;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--ink);
   display:flex; justify-content:space-between; align-items:center;
   transition: background .12s ease, color .12s ease;
@@ -234,7 +235,7 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
   color: var(--accent);
   font-family: var(--font);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor:pointer;
   transition: background .15s ease;
 }
@@ -244,7 +245,7 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
 .settings-toggle{
   font-family: var(--font);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--accent);
   cursor:pointer;
   background:none; border:none;
@@ -289,8 +290,8 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
 .empty-state{ margin-top: 96px; text-align:center; color: var(--ink-soft); }
 .empty-state h2{
   font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--ink);
   font-size: 28px;
   margin-bottom: 8px;
@@ -308,9 +309,9 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
 .worker-header h1{
   font-family: var(--font-display);
   font-size: 40px;
-  font-weight: 700;
+  font-weight: 600;
   margin: 0;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.025em;
   line-height: 1.1;
 }
 .worker-header .sub{
@@ -347,15 +348,15 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
 @media (max-width: 420px){ .receipt-grid{ grid-template-columns: 1fr; } }
 .receipt-item .label{
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--ink-soft);
   margin-bottom: 4px;
 }
 .receipt-item .value{
   font-family: var(--font-display);
   font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font-weight: 500;
+  letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
 }
 .receipt-item.deduction .value{ color: var(--rust); }
@@ -381,7 +382,7 @@ table{ width:100%; border-collapse: collapse; min-width: 560px; }
 thead th{
   text-align:left;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink-soft);
   padding: 12px 20px;
   border-bottom: 1px solid var(--line);
@@ -418,7 +419,7 @@ tbody tr:hover{ background: var(--surface-soft); }
     content: attr(data-label);
     font-size: 13px;
     color: var(--ink-soft);
-    font-weight: 500;
+    font-weight: 400;
     text-align: left;
     flex-shrink: 0;
   }
@@ -430,14 +431,14 @@ tbody tr:hover{ background: var(--surface-soft); }
   color: var(--rust);
   font-family: var(--font);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   padding: 4px 8px;
   border-radius: 8px;
   transition: background .15s ease;
 }
 .del-btn:hover, .timer-del-btn:hover{ background: var(--rust-soft); }
 .timer-note-input{ flex:1; min-width: 140px; }
-.timer-running-tag{ color: var(--positive); font-weight: 600; }
+.timer-running-tag{ color: var(--positive); font-weight: 500; }
 
 .add-entry-row{
   display:flex;
@@ -462,7 +463,7 @@ tbody tr:hover{ background: var(--surface-soft); }
   padding: 9px 20px;
   border-radius: 980px;
   font-family: var(--font);
-  font-weight: 500;
+  font-weight: 400;
   font-size: 14px;
   letter-spacing: -0.01em;
   cursor: pointer;
@@ -478,7 +479,7 @@ tbody tr:hover{ background: var(--surface-soft); }
   padding: 9px 20px;
   border-radius: 980px;
   font-family: var(--font);
-  font-weight: 500;
+  font-weight: 400;
   font-size: 14px;
   cursor: pointer;
   transition: background .15s ease, transform .1s ease;
@@ -517,15 +518,15 @@ tbody tr:hover{ background: var(--surface-soft); }
 .modal h3{
   font-family: var(--font-display);
   font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
   margin: 0 0 20px;
 }
 .field{ margin-bottom: 16px; }
 .field label{
   display:block;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--ink-soft);
   margin-bottom: 6px;
 }
@@ -558,7 +559,7 @@ tbody tr:hover{ background: var(--surface-soft); }
   color: var(--accent);
   font-family: var(--font);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   cursor:pointer;
 }
 .fx-live-btn:hover{ text-decoration: underline; }
@@ -588,8 +589,8 @@ tbody tr:hover{ background: var(--surface-soft); }
 .wv-title{
   font-family: var(--font-display);
   font-size: 34px;
-  font-weight: 700;
-  letter-spacing: -0.035em;
+  font-weight: 600;
+  letter-spacing: -0.025em;
   line-height: 1.1;
   margin: 12px 0 6px;
 }
@@ -617,14 +618,14 @@ tbody tr:hover{ background: var(--surface-soft); }
   border-radius: 8px;
   font-family: var(--font);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--ink);
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
   transition: background .15s ease, box-shadow .15s ease;
 }
-.wv-tab.active{ background: var(--thumb); box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.04); font-weight: 600; }
+.wv-tab.active{ background: var(--thumb); box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.04); font-weight: 500; }
 .wv-tab-icon{ display:none; font-size: 20px; line-height: 1; }
 
 /* Below this width the tabs become a frosted iOS tab bar pinned to the bottom. */
@@ -673,7 +674,7 @@ tbody tr:hover{ background: var(--surface-soft); }
   padding: 14px 16px;
   cursor: pointer;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 400;
   border-bottom: 1px solid var(--line);
   display:flex; justify-content:space-between; align-items:center;
   transition: background .12s ease;
@@ -716,16 +717,16 @@ tbody tr:hover{ background: var(--surface-soft); }
 .progression-header h2{
   font-family: var(--font-display);
   font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   margin: 0;
 }
 .month-select{ padding: 7px 12px; font-size: 13px; }
 .section-title{
   font-family: var(--font-display);
   font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   margin: 8px 0 16px;
 }
 
@@ -744,7 +745,7 @@ tbody tr:hover{ background: var(--surface-soft); }
   border-radius: 7px;
   font-family: var(--font);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--ink);
   cursor:pointer;
   transition: background .15s ease, box-shadow .15s ease;
@@ -752,7 +753,7 @@ tbody tr:hover{ background: var(--surface-soft); }
 .segmented-btn.active{
   background: var(--thumb);
   box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.04);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .chart-pair{
@@ -769,15 +770,15 @@ tbody tr:hover{ background: var(--surface-soft); }
 }
 .chart-card-title{
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--ink-soft);
   margin-bottom: 2px;
 }
 .chart-card-total{
   font-family: var(--font-display);
   font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   margin-bottom: 14px;
 }
@@ -792,7 +793,7 @@ tbody tr:hover{ background: var(--surface-soft); }
   color: var(--ink);
   font-family: var(--font);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 6px 10px;
   border-radius: 8px;
   box-shadow: var(--shadow-md);

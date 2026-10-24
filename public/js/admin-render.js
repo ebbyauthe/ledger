@@ -411,7 +411,7 @@ function renderMain(){
         const groupWorkerPay = g.entries.reduce((s,e) => s + calcEntryRow(e, worker.sharePercent).workerPay, 0);
         const groupHasUnpaid = g.entries.some(e => !e.paid);
         return `
-      <div style="padding:12px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="padding:12px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:500;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
         <span>${escapeHtml(g.period.label)}</span>
         <span style="display:flex;align-items:center;gap:10px;text-transform:none;letter-spacing:normal;">
           ${groupHours.toFixed(2)}h · ${fmtCAD(groupWorkerPay)}
@@ -460,9 +460,9 @@ function renderMain(){
 
     ${adminWorkerTab === 'payments' ? `
     <div class="entries-card">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:500;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
         <span>Payments logged <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— typing an amount marks whichever unpaid entries add up to it as paid</span></span>
-        ${payments.length ? `<span style="text-transform:none;letter-spacing:normal;font-weight:600;color:var(--ink);">${fmtCAD(paymentsTotal)}</span>` : ''}
+        ${payments.length ? `<span style="text-transform:none;letter-spacing:normal;font-weight:500;color:var(--ink);">${fmtCAD(paymentsTotal)}</span>` : ''}
       </div>
       ${payments.length ? `
       <table>
@@ -493,7 +493,7 @@ function renderMain(){
 
     ${adminWorkerTab === 'timer' ? `
     <div class="entries-card">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:500;background:var(--surface-soft);">
         Timer log <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— self-reported by ${escapeHtml(worker.name)}, informational only, doesn't affect hours or pay</span>
       </div>
       ${timerSessions.length ? `
@@ -969,7 +969,7 @@ function renderOverviewMain(main){
     </div>
 
     <div class="entries-card" style="margin-top:16px;">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:500;background:var(--surface-soft);">
         Timer activity <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— self-reported, informational only, doesn't affect hours or pay</span>
       </div>
       ${timerRows.length ? `
@@ -994,7 +994,7 @@ function renderMonthlyMain(main){
   const periodRows = calcAllPeriodsTotals();
 
   const receiptCard = (label, t, paymentDate) => `
-    <div style="margin: 20px 0 10px; font-size:20px; font-weight:700; letter-spacing:-0.025em; color: var(--ink);">${escapeHtml(label)}</div>
+    <div style="margin: 20px 0 10px; font-size:20px; font-weight:600; letter-spacing:-0.015em; color: var(--ink);">${escapeHtml(label)}</div>
     <div class="receipt">
       <div class="receipt-grid">
         <div class="receipt-item">

@@ -205,7 +205,7 @@ function paintWorkerSummary(){
 
         ${workerViewTab === 'monthly' ? `
           ${periodSummaries.length ? `
-          <div style="margin: 0 0 10px; font-size:20px; font-weight:700; letter-spacing:-0.025em; color: var(--ink);">All-time</div>
+          <div style="margin: 0 0 10px; font-size:20px; font-weight:600; letter-spacing:-0.015em; color: var(--ink);">All-time</div>
           <div class="receipt">
             <div class="receipt-grid wv-grid">
               <div class="receipt-item">
@@ -228,7 +228,7 @@ function paintWorkerSummary(){
             </div>
           </div>
           ${periodSummaries.map(p => `
-          <div style="margin: 20px 0 10px; font-size:20px; font-weight:700; letter-spacing:-0.025em; color: var(--ink);">${escapeHtml(p.period.label)}</div>
+          <div style="margin: 20px 0 10px; font-size:20px; font-weight:600; letter-spacing:-0.015em; color: var(--ink);">${escapeHtml(p.period.label)}</div>
           <div class="receipt">
             <div class="receipt-grid wv-grid">
               <div class="receipt-item">
@@ -257,7 +257,7 @@ function paintWorkerSummary(){
         ${workerViewTab === 'hours' ? `
         <div class="entries-card">
           ${w.entries.length ? entryGroups.map(g => `
-          <div style="padding:12px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
+          <div style="padding:12px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:500;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
             <span>${escapeHtml(g.period.label)}</span>
             <span style="text-transform:none;letter-spacing:normal;">${g.entries.reduce((s,e) => s + e.hours, 0).toFixed(2)}h · ${fmtCAD(g.entries.reduce((s,e) => s + e.workerPay, 0))}</span>
           </div>
