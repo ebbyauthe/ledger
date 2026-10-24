@@ -158,3 +158,66 @@ export function calcAllPeriodsTotals(){
   const sortedPeriods = state.periods.slice().sort((a,b) => b.startedAt - a.startedAt);
   return sortedPeriods.map(p => ({ period: p, totals: calcPeriodTotals(p.id) }));
 }
+
+/* ---------------- Calendar-month progression (separate from admin-defined periods above) ---------------- */
+
+// Cumulative day-by-day progression through a calendar month, for the "This month" chart.
+// entries: [{ date, hours, workerPay }] — the caller resolves workerPay however's appropriate
+// for its context (via calcEntryRow for admin views, or already-computed for the worker-facing
+// view), so this stays a simple, shared aggregator. yearMonth is a "YYYY-MM" string.
+export function calcMonthlyProgression(entries, yearMonth){
+  const [year, month] = yearMonth.split('-').map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const isCurrentMonth = yearMonth === todayStr.slice(0, 7);
+  const lastDay = isCurrentMonth ? Number(todayStr.slice(8, 10)) : daysInMonth;
+
+  const hoursByDay = new Array(daysInMonth + 1).fill(0);
+  const payByDay = new Array(daysInMonth + 1).fill(0);
+  entries.forEach(e => {
+    if(e.date.slice(0, 7) !== yearMonth) return;
+    const day = Number(e.date.slice(8, 10));
+    hoursByDay[day] += e.hours;
+    payByDay[day] += e.workerPay;
+  });
+
+  const hoursPoints = [], payPoints = [];
+  let cumHours = 0, cumPay = 0;
+  for(let d = 1; d <= lastDay; d++){
+    cumHours += hoursByDay[d];
+    cumPay += payByDay[d];
+    hoursPoints.push({ x: d, y: cumHours, hasEntry: hoursByDay[d] > 0 });
+    payPoints.push({ x: d, y: cumPay, hasEntry: payByDay[d] > 0 });
+  }
+  return { hoursPoints, payPoints, totalHours: cumHours, totalPay: cumPay, daysInMonth, lastDay };
+}
+
+// Every month with at least one entry, plus the current real month (so the dropdown is never
+// empty on a fresh account), newest first.
+export function getAvailableMonths(entries){
+  const set = new Set(entries.map(e => e.date.slice(0, 7)));
+  set.add(new Date().toISOString().slice(0, 7));
+  return Array.from(set).sort().reverse();
+}
+
+export function monthLabel(yearMonth){
+  const [year, month] = yearMonth.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+}
+
+// Gross/tax/worker-pay/hours for one calendar month, team-wide — feeds the admin's "all
+// metrics" stat-tile row. entriesWithShare: [{ entry, sharePct }].
+export function calcMonthTotals(entriesWithShare, yearMonth){
+  let totalHours = 0, gross = 0, tax = 0, workerPay = 0, workerPayNGN = 0;
+  entriesWithShare.forEach(({ entry, sharePct }) => {
+    if(entry.date.slice(0, 7) !== yearMonth) return;
+    const row = calcEntryRow(entry, sharePct);
+    totalHours += entry.hours;
+    gross += row.gross;
+    tax += row.tax;
+    workerPay += row.workerPay;
+    workerPayNGN += row.workerPayNGN;
+  });
+  const myTake = gross - tax - workerPay;
+  return { totalHours, gross, tax, workerPay, myTake, workerPayNGN };
+}

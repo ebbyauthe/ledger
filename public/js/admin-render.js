@@ -3,14 +3,20 @@ import {
   state, replaceState, SHARE_DEFAULT, RATE_DEFAULT, TAX_DEFAULT, OVERVIEW_ID, MONTHLY_ID, JOBS_ID,
   calcWorkerTotals, calcAllWorkersTotals, isWorkerClockedIn, calcEntryRow, findJob,
   groupEntriesByPeriod, currentPeriod, calcAllPeriodsTotals, computePaymentDate,
+  calcMonthlyProgression, getAvailableMonths, monthLabel, calcMonthTotals,
 } from './state.js';
 import { fmtCAD, fmtNGN, fmtDuration, fmtClockBoth, fmtDayTZ, fmtWhenCell, fmtPaymentDate, fmtDateLong, escapeHtml, TZ_QC } from './format.js';
 import { openModal, modalOpen } from './modal.js';
+import { renderProgressionChart } from './charts.js';
+import { getTheme, setTheme } from './theme.js';
 import {
   saveSettings, fetchExchangeRate, addWorker, addPeriod, updateWorkerShare, resetWorkerPassword,
   addEntryAdmin, deleteEntryAdmin, setEntryPaid, markAllPaid, addPaymentAdmin, deletePaymentAdmin,
   setTimerLogged, deleteWorker, loginAdmin, signupAdmin, addJob, updateJob,
 } from './admin-data.js';
+
+let selectedMonthTeam = new Date().toISOString().slice(0, 7);
+let selectedMonthByWorker = {};
 
 let selectedWorkerId = null;
 let adminAuthenticated = false;
@@ -179,7 +185,10 @@ export function render(){
     <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
     <div class="app-inner">
       <div class="sidebar" id="sidebar">
-        <div class="brand">Ledger<small>Work hours portal</small></div>
+        <div class="brand" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Ledger<small>Work hours portal</small></span>
+          <button class="theme-toggle-btn" id="themeToggleBtn" aria-label="Toggle dark mode">${getTheme() === 'dark' ? '☀️' : '🌙'}</button>
+        </div>
         <ul class="worker-list" id="workerList"></ul>
         <button class="add-worker-btn" id="addWorkerBtn">+ Add worker</button>
         <a class="settings-toggle" href="/w/${encodeURIComponent(currentAccountSlug || 'default')}" target="_blank" rel="noopener">Open worker view ↗</a>
@@ -241,6 +250,11 @@ function wireStaticButtons(){
 
   document.getElementById('hamburgerBtn').onclick = openSidebarDrawer;
   document.getElementById('sidebarBackdrop').onclick = closeSidebarDrawer;
+
+  document.getElementById('themeToggleBtn').onclick = (e) => {
+    setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+    e.target.textContent = getTheme() === 'dark' ? '☀️' : '🌙';
+  };
 }
 
 function renderSidebar(){
@@ -335,6 +349,7 @@ function renderMain(){
     </div>
 
     ${adminWorkerTab === 'overview' ? `
+    <div id="workerMonthSection"></div>
     <div class="receipt">
       <div class="receipt-grid">
         <div class="receipt-item">
@@ -393,7 +408,7 @@ function renderMain(){
         const groupWorkerPay = g.entries.reduce((s,e) => s + calcEntryRow(e, worker.sharePercent).workerPay, 0);
         const groupHasUnpaid = g.entries.some(e => !e.paid);
         return `
-      <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
         <span>${escapeHtml(g.period.label)}</span>
         <span style="display:flex;align-items:center;gap:10px;text-transform:none;letter-spacing:normal;">
           ${groupHours.toFixed(2)}h · ${fmtCAD(groupWorkerPay)}
@@ -442,7 +457,7 @@ function renderMain(){
 
     ${adminWorkerTab === 'payments' ? `
     <div class="entries-card">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;display:flex;justify-content:space-between;align-items:center;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
         <span>Payments logged <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— typing an amount marks whichever unpaid entries add up to it as paid</span></span>
         ${payments.length ? `<span style="text-transform:none;letter-spacing:normal;font-weight:600;color:var(--ink);">${fmtCAD(paymentsTotal)}</span>` : ''}
       </div>
@@ -475,7 +490,7 @@ function renderMain(){
 
     ${adminWorkerTab === 'timer' ? `
     <div class="entries-card">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);">
         Timer log <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— self-reported by ${escapeHtml(worker.name)}, informational only, doesn't affect hours or pay</span>
       </div>
       ${timerSessions.length ? `
@@ -500,6 +515,10 @@ function renderMain(){
     </div>
     ` : ''}
   `;
+
+  if(adminWorkerTab === 'overview'){
+    renderWorkerMonthSection(document.getElementById('workerMonthSection'), worker);
+  }
 
   main.querySelectorAll('.wv-tab').forEach(btn => {
     btn.onclick = () => {
@@ -734,6 +753,94 @@ function renderMain(){
   });
 }
 
+/* ---------------- Monthly progression (calendar month, separate from admin-defined periods) ---------------- */
+
+// Shared by the team-wide overview and each worker's own Overview tab. entries: [{ date,
+// hours, workerPay }]. extraHtml (optional) renders above the charts — used by the team view
+// for its "all metrics" stat-tile row.
+function renderMonthProgression(container, entries, selectedMonth, onMonthChange, extraHtml){
+  const months = getAvailableMonths(entries);
+  const month = months.includes(selectedMonth) ? selectedMonth : months[0];
+  const progression = calcMonthlyProgression(entries, month);
+  container.innerHTML = `
+    <div class="progression-section">
+      <div class="progression-header">
+        <h2>${escapeHtml(monthLabel(month))}</h2>
+        <select class="month-select" id="progressionMonthSelect">
+          ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${escapeHtml(monthLabel(m))}</option>`).join('')}
+        </select>
+      </div>
+      ${extraHtml || ''}
+      <div class="chart-pair">
+        <div class="chart-card">
+          <div class="chart-card-title">Hours</div>
+          <div class="chart-card-total">${progression.totalHours.toFixed(1)}h</div>
+          <div id="progressionHoursChart"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Pay</div>
+          <div class="chart-card-total">${fmtCAD(progression.totalPay)}</div>
+          <div id="progressionPayChart"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  renderProgressionChart(container.querySelector('#progressionHoursChart'), {
+    points: progression.hoursPoints, daysInMonth: progression.daysInMonth,
+    colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet this month',
+  });
+  renderProgressionChart(container.querySelector('#progressionPayChart'), {
+    points: progression.payPoints, daysInMonth: progression.daysInMonth,
+    colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet this month',
+  });
+  container.querySelector('#progressionMonthSelect').onchange = (e) => onMonthChange(e.target.value);
+}
+
+function buildTeamMonthEntries(){
+  const list = [], withShare = [];
+  state.workers.forEach(w => {
+    (state.entries[w.id] || []).forEach(e => {
+      const row = calcEntryRow(e, w.sharePercent);
+      list.push({ date: e.date, hours: e.hours, workerPay: row.workerPay });
+      withShare.push({ entry: e, sharePct: w.sharePercent });
+    });
+  });
+  return { list, withShare };
+}
+
+function renderTeamMonthSection(container){
+  const { list, withShare } = buildTeamMonthEntries();
+  const monthTotals = calcMonthTotals(withShare, selectedMonthTeam);
+  const statsHtml = `
+    <div class="receipt">
+      <div class="receipt-grid">
+        <div class="receipt-item"><div class="label">Hours logged</div><div class="value">${monthTotals.totalHours.toFixed(1)}</div></div>
+        <div class="receipt-item"><div class="label">Gross earned</div><div class="value">${fmtCAD(monthTotals.gross)}</div></div>
+        <div class="receipt-item deduction"><div class="label">Tax</div><div class="value">-${fmtCAD(monthTotals.tax)}</div></div>
+        <div class="receipt-item highlight"><div class="label">Worker pay</div><div class="value">${fmtCAD(monthTotals.workerPay)}</div></div>
+        <div class="receipt-item highlight"><div class="label">Worker pay (₦)</div><div class="value">${fmtNGN(monthTotals.workerPayNGN)}</div></div>
+      </div>
+      <hr class="receipt-divider">
+      <div class="receipt-item"><div class="label">Your take (after tax &amp; worker pay)</div><div class="value">${fmtCAD(monthTotals.myTake)}</div></div>
+    </div>
+  `;
+  renderMonthProgression(container, list, selectedMonthTeam, (month) => {
+    selectedMonthTeam = month;
+    renderTeamMonthSection(container);
+  }, statsHtml);
+}
+
+function renderWorkerMonthSection(container, worker){
+  const entries = (state.entries[worker.id] || []).map(e => ({
+    date: e.date, hours: e.hours, workerPay: calcEntryRow(e, worker.sharePercent).workerPay,
+  }));
+  const selected = selectedMonthByWorker[worker.id] || new Date().toISOString().slice(0, 7);
+  renderMonthProgression(container, entries, selected, (month) => {
+    selectedMonthByWorker[worker.id] = month;
+    renderWorkerMonthSection(container, worker);
+  });
+}
+
 function renderOverviewMain(main){
   const totals = calcAllWorkersTotals();
   const rows = totals.perWorker.slice().sort((a,b) => b.totals.gross - a.totals.gross);
@@ -749,6 +856,8 @@ function renderOverviewMain(main){
         <div class="sub">${state.jobs.length} job${state.jobs.length === 1 ? '' : 's'} · ${state.workers.length} worker${state.workers.length === 1 ? '' : 's'}</div>
       </div>
     </div>
+
+    <div id="teamMonthSection"></div>
 
     <div class="receipt">
       <div class="receipt-grid">
@@ -810,7 +919,7 @@ function renderOverviewMain(main){
     </div>
 
     <div class="entries-card" style="margin-top:16px;">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);">
         Timer activity <span style="text-transform:none;letter-spacing:normal;font-weight:400;">— self-reported, informational only, doesn't affect hours or pay</span>
       </div>
       ${timerRows.length ? `
@@ -827,6 +936,7 @@ function renderOverviewMain(main){
       ` : `<div class="empty-entries">No timer activity logged yet.</div>`}
     </div>
   `;
+  renderTeamMonthSection(document.getElementById('teamMonthSection'));
 }
 
 function renderMonthlyMain(main){

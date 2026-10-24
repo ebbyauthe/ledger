@@ -1,7 +1,9 @@
 import { api } from './api.js';
-import { groupEntriesByPeriod } from './state.js';
+import { groupEntriesByPeriod, calcMonthlyProgression, getAvailableMonths, monthLabel } from './state.js';
 import { fmtCAD, fmtNGN, fmtElapsedLive, fmtDuration, fmtWhenCell, escapeHtml } from './format.js';
 import { openModal } from './modal.js';
+import { renderProgressionChart } from './charts.js';
+import { getTheme, setTheme } from './theme.js';
 
 let workerNames = [];
 let workerViewSelectedId = null;
@@ -10,6 +12,19 @@ let workerTimerTickHandle = null;
 let workerViewTab = 'overview';
 let workerViewSlug = null;
 let workerViewBadSlug = false;
+let selectedMonthWorker = new Date().toISOString().slice(0, 7);
+
+function themeToggleHtml(){
+  return `<button class="theme-toggle-btn" id="wvThemeToggle" aria-label="Toggle dark mode">${getTheme() === 'dark' ? '☀️' : '🌙'}</button>`;
+}
+function wireThemeToggle(){
+  const btn = document.getElementById('wvThemeToggle');
+  if(!btn) return;
+  btn.onclick = () => {
+    setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+    btn.textContent = getTheme() === 'dark' ? '☀️' : '🌙';
+  };
+}
 
 function clearWorkerTimerTick(){
   if(workerTimerTickHandle) clearInterval(workerTimerTickHandle);
@@ -48,6 +63,7 @@ function paintWorkerPicker(){
   app.innerHTML = `
     <div class="worker-view-wrap">
       <div class="worker-view-card">
+        <div style="display:flex;justify-content:flex-end;">${themeToggleHtml()}</div>
         <h2 class="wv-title">Who are you?</h2>
         <p class="wv-sub">Pick your name to see your hours and earnings.</p>
         <ul class="wv-picker">
@@ -56,6 +72,7 @@ function paintWorkerPicker(){
       </div>
     </div>
   `;
+  wireThemeToggle();
   app.querySelectorAll('.wv-picker li[data-id]').forEach(li => {
     li.onclick = () => {
       const worker = workerNames.find(w => w.id === li.dataset.id);
@@ -69,7 +86,10 @@ function paintWorkerLogin(worker, errorMsg){
   app.innerHTML = `
     <div class="worker-view-wrap">
       <div class="worker-view-card">
-        <button class="settings-toggle" id="wvLoginBack">← Not ${escapeHtml(worker.name)}?</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <button class="settings-toggle" id="wvLoginBack">← Not ${escapeHtml(worker.name)}?</button>
+          ${themeToggleHtml()}
+        </div>
         <h2 class="wv-title">${escapeHtml(worker.name)}</h2>
         <p class="wv-sub">Enter your password to continue.</p>
         <div class="field">
@@ -81,6 +101,7 @@ function paintWorkerLogin(worker, errorMsg){
       </div>
     </div>
   `;
+  wireThemeToggle();
   document.getElementById('wvLoginBack').onclick = () => paintWorkerPicker();
   const submit = async () => {
     const password = document.getElementById('wvPassword').value;
@@ -121,9 +142,12 @@ function paintWorkerSummary(){
   app.innerHTML = `
     <div class="worker-view-wrap has-tabs">
       <div class="worker-view-card wide">
-        <div class="wv-header">
+        <div class="wv-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
           <button class="settings-toggle" id="wvSwitch">← Not ${escapeHtml(w.name)}? Switch</button>
-          <button class="settings-toggle" id="wvChangePassword">Change password</button>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <button class="settings-toggle" id="wvChangePassword">Change password</button>
+            ${themeToggleHtml()}
+          </div>
         </div>
         <h2 class="wv-title">${escapeHtml(w.name)}</h2>
         <p class="wv-sub">Your hours and earnings</p>
@@ -136,6 +160,7 @@ function paintWorkerSummary(){
         </div>
 
         ${workerViewTab === 'overview' ? `
+        <div id="workerOwnMonthSection"></div>
         <div class="receipt">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
             <div>
@@ -230,7 +255,7 @@ function paintWorkerSummary(){
         ${workerViewTab === 'hours' ? `
         <div class="entries-card">
           ${w.entries.length ? entryGroups.map(g => `
-          <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:#FCFBF8;display:flex;justify-content:space-between;align-items:center;">
+          <div style="padding:10px 16px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-weight:600;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
             <span>${escapeHtml(g.period.label)}</span>
             <span style="text-transform:none;letter-spacing:normal;">${g.entries.reduce((s,e) => s + e.hours, 0).toFixed(2)}h · ${fmtCAD(g.entries.reduce((s,e) => s + e.workerPay, 0))}</span>
           </div>
@@ -272,6 +297,8 @@ function paintWorkerSummary(){
       </div>
     </div>
   `;
+  wireThemeToggle();
+  if(workerViewTab === 'overview') renderWorkerOwnMonthSection();
   app.querySelectorAll('.wv-tab').forEach(btn => {
     btn.onclick = () => {
       workerViewTab = btn.dataset.tab;
@@ -372,5 +399,50 @@ function paintWorkerSummary(){
         return false;
       }
     });
+  };
+}
+
+// This worker's own hours/pay progression for a selected calendar month — never another
+// worker's, since workerSummary only ever contains the signed-in worker's own entries.
+function renderWorkerOwnMonthSection(){
+  const container = document.getElementById('workerOwnMonthSection');
+  if(!container || !workerSummary) return;
+  const entries = (workerSummary.entries || []).map(e => ({ date: e.date, hours: e.hours, workerPay: e.workerPay }));
+  const months = getAvailableMonths(entries);
+  const month = months.includes(selectedMonthWorker) ? selectedMonthWorker : months[0];
+  const progression = calcMonthlyProgression(entries, month);
+  container.innerHTML = `
+    <div class="progression-section">
+      <div class="progression-header">
+        <h2>${escapeHtml(monthLabel(month))}</h2>
+        <select class="month-select" id="workerMonthSelect">
+          ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${escapeHtml(monthLabel(m))}</option>`).join('')}
+        </select>
+      </div>
+      <div class="chart-pair">
+        <div class="chart-card">
+          <div class="chart-card-title">Hours</div>
+          <div class="chart-card-total">${progression.totalHours.toFixed(1)}h</div>
+          <div id="workerHoursChart"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Pay</div>
+          <div class="chart-card-total">${fmtCAD(progression.totalPay)}</div>
+          <div id="workerPayChart"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  renderProgressionChart(container.querySelector('#workerHoursChart'), {
+    points: progression.hoursPoints, daysInMonth: progression.daysInMonth,
+    colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet this month',
+  });
+  renderProgressionChart(container.querySelector('#workerPayChart'), {
+    points: progression.payPoints, daysInMonth: progression.daysInMonth,
+    colorVar: '--rust', formatValue: v => fmtCAD(v), emptyLabel: 'No pay logged yet this month',
+  });
+  container.querySelector('#workerMonthSelect').onchange = (e) => {
+    selectedMonthWorker = e.target.value;
+    renderWorkerOwnMonthSection();
   };
 }

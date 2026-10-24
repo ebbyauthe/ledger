@@ -1,6 +1,7 @@
 :root{
   --paper: #FAF9F4;
   --paper-card: #FFFFFF;
+  --surface-soft: #FCFBF8;
   --ink: #1C2B33;
   --ink-soft: #5B6B72;
   --line: #DCD7C8;
@@ -12,6 +13,38 @@
   --shadow-md: 0 8px 24px rgba(28,43,51,0.08), 0 2px 6px rgba(28,43,51,0.05);
   --radius: 12px;
 }
+/* Dark mode: an explicit choice via [data-theme] always wins over the OS setting in
+   either direction — the media-query block only applies when nothing's been chosen yet. */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper: #15191B;
+    --paper-card: #1E2426;
+    --surface-soft: #22282A;
+    --ink: #ECEAE2;
+    --ink-soft: #9BA6AA;
+    --line: #333B3D;
+    --accent: #4FA98A;
+    --accent-soft: #1F3730;
+    --rust: #E08A5D;
+    --rust-soft: #3A2620;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.25);
+    --shadow-md: 0 8px 24px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.3);
+  }
+}
+:root[data-theme="dark"]{
+  --paper: #15191B;
+  --paper-card: #1E2426;
+  --surface-soft: #22282A;
+  --ink: #ECEAE2;
+  --ink-soft: #9BA6AA;
+  --line: #333B3D;
+  --accent: #4FA98A;
+  --accent-soft: #1F3730;
+  --rust: #E08A5D;
+  --rust-soft: #3A2620;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.25);
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.3);
+}
 *{ box-sizing: border-box; }
 html,body{ margin:0; padding:0; }
 body{
@@ -21,6 +54,7 @@ body{
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: background-color .2s ease, color .2s ease;
 }
 .app{
   display: flex;
@@ -313,7 +347,7 @@ thead th{
   font-weight:600;
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
-  background: #FCFBF8;
+  background: var(--surface-soft);
 }
 tbody td{
   padding: 12px 16px;
@@ -324,7 +358,7 @@ tbody td{
 tbody td.note-col{ font-family:'Inter', sans-serif; color: var(--ink-soft); }
 tbody tr:last-child td{ border-bottom:none; }
 tbody tr{ transition: background-color .12s ease; }
-tbody tr:hover{ background: #FCFBF8; }
+tbody tr:hover{ background: var(--surface-soft); }
 
 /* Below this width, every table becomes a stack of cards (one per row) instead of a
    horizontally-scrolling grid — each cell shows its column name as a label above the value. */
@@ -389,7 +423,7 @@ tbody tr:hover{ background: #FCFBF8; }
   display:flex;
   gap: 10px;
   padding: 14px 16px;
-  background: #FCFBF8;
+  background: var(--surface-soft);
   border-top: 1px solid var(--line);
   flex-wrap: wrap;
   align-items:center;
@@ -666,3 +700,98 @@ tbody tr:hover{ background: #FCFBF8; }
 .wv-picker li.wv-none:hover{ border-color: var(--line); background: var(--paper-card); transform:none; box-shadow:none; }
 .wv-grid{ grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 560px){ .wv-grid{ grid-template-columns: 1fr; } }
+
+/* Theme toggle */
+.theme-toggle-btn{
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink);
+  flex-shrink: 0;
+  transition: border-color .15s ease, background .15s ease;
+}
+.theme-toggle-btn:hover{ border-color: var(--accent); background: var(--accent-soft); }
+
+/* Monthly progression charts */
+.progression-section{ margin-bottom: 26px; }
+.progression-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.progression-header h2{
+  font-family:'Fraunces', serif;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+.month-select{
+  font-family:'Inter', sans-serif;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--ink);
+  background: var(--paper-card);
+  cursor: pointer;
+}
+.chart-pair{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 760px){ .chart-pair{ grid-template-columns: 1fr; } }
+.chart-card{
+  background: var(--paper-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 18px;
+}
+.chart-card-title{
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+.chart-card-total{
+  font-family:'IBM Plex Mono', monospace;
+  font-size: 22px;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+.chart-svg-wrap{ position: relative; }
+.chart-svg-wrap svg{ display:block; width:100%; height:auto; overflow: visible; }
+.chart-tooltip{
+  position: absolute;
+  pointer-events: none;
+  background: var(--ink);
+  color: var(--paper-card);
+  font-family:'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  opacity: 0;
+  transition: opacity .1s ease;
+  z-index: 5;
+}
+.chart-tooltip.visible{ opacity: 1; }
+.chart-empty{
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-align: center;
+  padding: 36px 0;
+}
