@@ -768,14 +768,16 @@ function renderMonthProgression(container, entries, { selectedMonth, onMonthChan
   const months = getAvailableMonths(entries);
   const month = months.includes(selectedMonth) ? selectedMonth : months[0];
 
-  let hoursPoints, payPoints, xMax, totalHours, totalPay, formatX, formatTick, titleHtml;
+  let hoursPoints, payPoints, takePoints, xMax, totalHours, totalPay, totalTake, formatX, formatTick, titleHtml;
   if(isOverall){
     const allMonths = calcAllMonthsTotals(entries);
     hoursPoints = allMonths.hoursPoints;
     payPoints = allMonths.payPoints;
+    takePoints = allMonths.takePoints;
     xMax = allMonths.xMax;
     totalHours = allMonths.totalHours;
     totalPay = allMonths.totalPay;
+    totalTake = allMonths.totalTake;
     formatX = (x) => monthLabel(allMonths.months[x - 1]);
     formatTick = (x) => shortMonthLabel(allMonths.months[x - 1]);
     titleHtml = `<h2>All months</h2>`;
@@ -783,9 +785,11 @@ function renderMonthProgression(container, entries, { selectedMonth, onMonthChan
     const progression = calcMonthlyProgression(entries, month);
     hoursPoints = progression.dailyHoursPoints;
     payPoints = progression.dailyPayPoints;
+    takePoints = progression.dailyTakePoints;
     xMax = progression.daysInMonth;
     totalHours = progression.totalHours;
     totalPay = progression.totalPay;
+    totalTake = progression.totalTake;
     formatX = (x) => `Day ${x}`;
     titleHtml = `<h2>${escapeHtml(monthLabel(month))}</h2>`;
   }
@@ -808,19 +812,31 @@ function renderMonthProgression(container, entries, { selectedMonth, onMonthChan
       </div>
       ${extraHtml || ''}
       <div class="chart-pair">
+        <div class="chart-card wide">
+          <div class="chart-card-title">${isOverall ? 'Your take per month' : 'Your take per day'} · after tax &amp; worker pay</div>
+          <div class="chart-card-total">${fmtCAD(totalTake)}</div>
+          <div id="progressionTakeChart"></div>
+        </div>
         <div class="chart-card">
           <div class="chart-card-title">${isOverall ? 'Hours per month' : 'Hours per day'}</div>
           <div class="chart-card-total">${totalHours.toFixed(1)}h</div>
           <div id="progressionHoursChart"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-card-title">${isOverall ? 'Pay per month' : 'Pay per day'}</div>
+          <div class="chart-card-title">${isOverall ? 'Worker pay per month' : 'Worker pay per day'}</div>
           <div class="chart-card-total">${fmtCAD(totalPay)}</div>
           <div id="progressionPayChart"></div>
         </div>
       </div>
     </div>
   `;
+  // The take card spans the full row on desktop, so widen its viewBox to keep it short;
+  // on mobile the cards stack at equal width and it falls back to the normal shape.
+  const takeEl = container.querySelector('#progressionTakeChart');
+  renderProgressionChart(takeEl, {
+    points: takePoints, xMax, formatX, formatTick, width: takeEl.clientWidth > 600 ? 1060 : undefined,
+    colorVar: '--take', formatValue: v => fmtCAD(v), emptyLabel: 'Nothing earned yet',
+  });
   renderProgressionChart(container.querySelector('#progressionHoursChart'), {
     points: hoursPoints, xMax, formatX, formatTick,
     colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet',
@@ -841,7 +857,7 @@ function buildTeamMonthEntries(){
   state.workers.forEach(w => {
     (state.entries[w.id] || []).forEach(e => {
       const row = calcEntryRow(e, w.sharePercent);
-      list.push({ date: e.date, hours: e.hours, workerPay: row.workerPay });
+      list.push({ date: e.date, hours: e.hours, workerPay: row.workerPay, take: row.gross - row.tax - row.workerPay });
       withShare.push({ entry: e, sharePct: w.sharePercent });
     });
   });
@@ -877,9 +893,10 @@ function renderTeamMonthSection(container){
 }
 
 function renderWorkerMonthSection(container, worker){
-  const entries = (state.entries[worker.id] || []).map(e => ({
-    date: e.date, hours: e.hours, workerPay: calcEntryRow(e, worker.sharePercent).workerPay,
-  }));
+  const entries = (state.entries[worker.id] || []).map(e => {
+    const row = calcEntryRow(e, worker.sharePercent);
+    return { date: e.date, hours: e.hours, workerPay: row.workerPay, take: row.gross - row.tax - row.workerPay };
+  });
   const selected = selectedMonthByWorker[worker.id] || new Date().toISOString().slice(0, 7);
   const mode = progressionModeByWorker[worker.id] || 'daily';
   renderMonthProgression(container, entries, {

@@ -4,20 +4,23 @@
 // what it means (day-of-month for "Daily", month-index for "Overall") and supplies formatX
 // (tooltip label) and formatTick (short axis label) accordingly.
 
-const WIDTH = 520, HEIGHT = 190;
+const DEFAULT_WIDTH = 520, HEIGHT = 190;
 const PAD_L = 46, PAD_R = 6, PAD_T = 12, PAD_B = 24;
-const PLOT_W = WIDTH - PAD_L - PAD_R;
 const PLOT_H = HEIGHT - PAD_T - PAD_B;
 const MAX_BAR_W = 36;
 const BAR_GAP = 2;
 
 // points: [{ x: 1..xMax, y: value }]. xMax sets the full axis width even when points stop
 // partway (e.g. "today" in the current month), so the remaining days show as empty slots.
-export function renderProgressionChart(container, { points, xMax, colorVar, formatValue, formatX, formatTick, emptyLabel }){
+// width widens the viewBox (height stays fixed) so a full-width card keeps a wide, short
+// aspect instead of scaling up into a tall chart.
+export function renderProgressionChart(container, { points, xMax, colorVar, formatValue, formatX, formatTick, emptyLabel, width }){
   if(!points || !points.length){
     container.innerHTML = `<div class="chart-empty">${emptyLabel || 'No data yet'}</div>`;
     return;
   }
+  const WIDTH = width || DEFAULT_WIDTH;
+  const PLOT_W = WIDTH - PAD_L - PAD_R;
   const labelX = formatX || (x => `Day ${x}`);
   const tickX = formatTick || (x => String(x));
 

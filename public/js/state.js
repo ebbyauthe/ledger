@@ -161,12 +161,11 @@ export function calcAllPeriodsTotals(){
 
 /* ---------------- Calendar-month progression (separate from admin-defined periods above) ---------------- */
 
-// Day-by-day progression through a calendar month, for the "This month" chart. Returns both
-// a "daily" series (that day's own hours/pay — drops back down on a lighter day, 0 on a day
-// with nothing logged) and an "overall" cumulative running-total series, so the UI can toggle
-// between the two without recomputing. entries: [{ date, hours, workerPay }] — the caller
-// resolves workerPay however's appropriate for its context (via calcEntryRow for admin views,
-// or already-computed for the worker-facing view). yearMonth is a "YYYY-MM" string.
+// Day-by-day values through one calendar month, for the "Daily" chart view — that day's own
+// hours/pay/take, so a lighter day drops back down and a day with nothing logged is 0.
+// entries: [{ date, hours, workerPay, take? }] — the caller resolves the money fields however
+// suits its context (via calcEntryRow for admin views, or already-computed for the
+// worker-facing view, which never supplies take). yearMonth is a "YYYY-MM" string.
 export function calcMonthlyProgression(entries, yearMonth){
   const [year, month] = yearMonth.split('-').map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -176,48 +175,50 @@ export function calcMonthlyProgression(entries, yearMonth){
 
   const hoursByDay = new Array(daysInMonth + 1).fill(0);
   const payByDay = new Array(daysInMonth + 1).fill(0);
+  const takeByDay = new Array(daysInMonth + 1).fill(0);
   entries.forEach(e => {
     if(e.date.slice(0, 7) !== yearMonth) return;
     const day = Number(e.date.slice(8, 10));
     hoursByDay[day] += e.hours;
     payByDay[day] += e.workerPay;
+    takeByDay[day] += e.take || 0;
   });
 
-  const dailyHoursPoints = [], dailyPayPoints = [], hoursPoints = [], payPoints = [];
-  let cumHours = 0, cumPay = 0;
+  const dailyHoursPoints = [], dailyPayPoints = [], dailyTakePoints = [];
+  let totalHours = 0, totalPay = 0, totalTake = 0;
   for(let d = 1; d <= lastDay; d++){
-    const dh = hoursByDay[d], dp = payByDay[d];
-    cumHours += dh;
-    cumPay += dp;
-    dailyHoursPoints.push({ x: d, y: dh, hasEntry: dh > 0 });
-    dailyPayPoints.push({ x: d, y: dp, hasEntry: dp > 0 });
-    hoursPoints.push({ x: d, y: cumHours, hasEntry: dh > 0 });
-    payPoints.push({ x: d, y: cumPay, hasEntry: dp > 0 });
+    totalHours += hoursByDay[d];
+    totalPay += payByDay[d];
+    totalTake += takeByDay[d];
+    dailyHoursPoints.push({ x: d, y: hoursByDay[d] });
+    dailyPayPoints.push({ x: d, y: payByDay[d] });
+    dailyTakePoints.push({ x: d, y: takeByDay[d] });
   }
-  return {
-    dailyHoursPoints, dailyPayPoints, hoursPoints, payPoints,
-    totalHours: cumHours, totalPay: cumPay, daysInMonth, lastDay,
-  };
+  return { dailyHoursPoints, dailyPayPoints, dailyTakePoints, totalHours, totalPay, totalTake, daysInMonth, lastDay };
 }
 
 // Totals per calendar month across every month with data, oldest first — the "Overall" view
 // of the progression chart (as opposed to "Daily", which is day-by-day within one month).
-// entries: [{ date, hours, workerPay }].
+// entries: [{ date, hours, workerPay, take? }].
 export function calcAllMonthsTotals(entries){
   const byMonth = new Map();
   entries.forEach(e => {
     const ym = e.date.slice(0, 7);
-    if(!byMonth.has(ym)) byMonth.set(ym, { hours: 0, pay: 0 });
+    if(!byMonth.has(ym)) byMonth.set(ym, { hours: 0, pay: 0, take: 0 });
     const bucket = byMonth.get(ym);
     bucket.hours += e.hours;
     bucket.pay += e.workerPay;
+    bucket.take += e.take || 0;
   });
   const months = Array.from(byMonth.keys()).sort();
-  const hoursPoints = months.map((m, i) => ({ x: i + 1, y: byMonth.get(m).hours, hasEntry: true }));
-  const payPoints = months.map((m, i) => ({ x: i + 1, y: byMonth.get(m).pay, hasEntry: true }));
-  const totalHours = hoursPoints.reduce((s, p) => s + p.y, 0);
-  const totalPay = payPoints.reduce((s, p) => s + p.y, 0);
-  return { months, hoursPoints, payPoints, totalHours, totalPay, xMax: Math.max(1, months.length) };
+  const series = key => months.map((m, i) => ({ x: i + 1, y: byMonth.get(m)[key] }));
+  const sum = key => months.reduce((s, m) => s + byMonth.get(m)[key], 0);
+  return {
+    months,
+    hoursPoints: series('hours'), payPoints: series('pay'), takePoints: series('take'),
+    totalHours: sum('hours'), totalPay: sum('pay'), totalTake: sum('take'),
+    xMax: Math.max(1, months.length),
+  };
 }
 
 // Every month with at least one entry, plus the current real month (so the dropdown is never
