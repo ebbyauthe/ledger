@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from '../lib/router.js';
 import adminAuth from './adminAuth.js';
 import adminState from './adminState.js';
 import adminSettings from './adminSettings.js';

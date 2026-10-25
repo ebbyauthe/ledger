@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from '../lib/router.js';
 import { db } from '../db/client.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import { uid, generatePassword, hashPassword, verifyPassword } from '../lib/auth.js';

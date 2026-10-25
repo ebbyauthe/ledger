@@ -47,8 +47,10 @@ export function fmtWhenCell(ts){
   return `<div>${fmtDayTZ(ts, TZ_QC)}</div><div>${fmtClockBoth(ts)}</div>`;
 }
 
+// Escapes quotes as well as <, >, &, so the result is safe inside a quoted HTML attribute
+// (value="...") and not just in element text — the old textContent/innerHTML trick left
+// quotes alone, which would let a value break out of an attribute.
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export function escapeHtml(str){
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  return String(str ?? '').replace(/[&<>"']/g, ch => HTML_ESCAPES[ch]);
 }

@@ -1,10 +1,10 @@
 import { db } from '../db/client.js';
-import { WORKER_SESSION_COOKIE, hashToken } from '../lib/auth.js';
+import { WORKER_SESSION_COOKIE, hashToken, readSessionToken } from '../lib/auth.js';
 import { maybePruneSessions } from '../lib/sessions.js';
 
 export async function isValidWorkerSession(req, workerId) {
   await maybePruneSessions();
-  const token = req.cookies[WORKER_SESSION_COOKIE];
+  const token = readSessionToken(req, WORKER_SESSION_COOKIE);
   if (!token) return false;
   const tokenHash = hashToken(token);
   const row = (await db.execute({ sql: 'SELECT worker_id, expires_at FROM worker_sessions WHERE token = ?', args: [tokenHash] })).rows[0];

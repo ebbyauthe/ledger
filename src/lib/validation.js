@@ -1,5 +1,9 @@
+// Shape check plus a round-trip through Date, so impossible dates like 2026-13-45 or
+// 2026-02-30 are rejected instead of corrupting the per-month/per-day chart buckets.
 export function isValidDate(d) {
-  return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const parsed = new Date(`${d}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === d;
 }
 
 export function parseEntryInput(body) {

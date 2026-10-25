@@ -1,5 +1,5 @@
 import { db } from '../db/client.js';
-import { SESSION_COOKIE, hashToken } from '../lib/auth.js';
+import { SESSION_COOKIE, hashToken, readSessionToken } from '../lib/auth.js';
 import { maybePruneSessions } from '../lib/sessions.js';
 
 // Resolves the session cookie to the account it belongs to, or null if there isn't a valid
@@ -7,7 +7,7 @@ import { maybePruneSessions } from '../lib/sessions.js';
 // cheap to guard) is treated as invalid rather than trusted.
 export async function isValidSession(req) {
   await maybePruneSessions();
-  const token = req.cookies[SESSION_COOKIE];
+  const token = readSessionToken(req, SESSION_COOKIE);
   if (!token) return null;
   const tokenHash = hashToken(token);
   const row = (await db.execute({ sql: 'SELECT expires_at, account_id FROM admin_sessions WHERE token = ?', args: [tokenHash] })).rows[0];

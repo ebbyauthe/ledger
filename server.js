@@ -46,6 +46,16 @@ app.get('/w/:slug', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Last stop for any error — including async route errors forwarded by src/lib/router.js.
+// Client errors (e.g. malformed JSON, status 400) keep their status; anything else becomes a
+// generic 500 so internals like stack traces or SQL never reach the browser.
+app.use((err, req, res, next) => {
+  if(res.headersSent) return next(err);
+  const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
+  if(status === 500) console.error(err);
+  res.status(status).json({ error: status === 500 ? 'something went wrong' : 'bad request' });
+});
+
 // Turso can occasionally be slow/unreachable waking a cold DB (e.g. SQLITE_NOMEM
 // "unable to open db file"); a couple of quick retries rides that out instead of
 // crashing the whole serverless function on a single transient blip.

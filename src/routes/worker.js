@@ -1,9 +1,9 @@
-import { Router } from 'express';
+import { Router } from '../lib/router.js';
 import crypto from 'node:crypto';
 import { db } from '../db/client.js';
 import { requireWorkerSession } from '../middleware/requireWorkerSession.js';
-import { loginLimiter } from '../middleware/rateLimit.js';
-import { WORKER_SESSION_COOKIE, SESSION_TTL_MS, uid, hashToken, hashPassword, verifyPassword } from '../lib/auth.js';
+import { loginLimiter, pickerLimiter } from '../middleware/rateLimit.js';
+import { WORKER_SESSION_COOKIE, SESSION_TTL_MS, uid, hashToken, hashPassword, verifyPassword, readSessionToken } from '../lib/auth.js';
 import { mapEntry, mapTimerSession, mapPeriod } from '../lib/mappers.js';
 
 const router = Router();
@@ -11,7 +11,7 @@ const router = Router();
 // ---------- Public worker-facing routes ----------
 // These never expose hourly rate, tax %, other workers' data, or Ebenezer's cut.
 
-router.get('/accounts/:slug/worker-names', async (req, res) => {
+router.get('/accounts/:slug/worker-names', pickerLimiter, async (req, res) => {
   const { slug } = req.params;
   const account = (await db.execute({ sql: 'SELECT id FROM accounts WHERE slug = ?', args: [slug] })).rows[0];
   if (!account) return res.status(404).json({ error: 'not found' });
@@ -23,7 +23,7 @@ router.get('/accounts/:slug/worker-names', async (req, res) => {
 });
 
 router.get('/workers/session', async (req, res) => {
-  const token = req.cookies[WORKER_SESSION_COOKIE];
+  const token = readSessionToken(req, WORKER_SESSION_COOKIE);
   if (!token) return res.json({ workerId: null });
   const row = (await db.execute({ sql: 'SELECT worker_id, expires_at FROM worker_sessions WHERE token = ?', args: [hashToken(token)] })).rows[0];
   if (!row || row.expires_at < Date.now()) return res.json({ workerId: null });
@@ -56,7 +56,7 @@ router.post('/workers/:id/login', loginLimiter, async (req, res) => {
 });
 
 router.post('/workers/logout', async (req, res) => {
-  const token = req.cookies[WORKER_SESSION_COOKIE];
+  const token = readSessionToken(req, WORKER_SESSION_COOKIE);
   if (token) await db.execute({ sql: 'DELETE FROM worker_sessions WHERE token = ?', args: [hashToken(token)] });
   res.clearCookie(WORKER_SESSION_COOKIE);
   res.json({ ok: true });
@@ -78,7 +78,7 @@ router.put('/workers/:id/password', loginLimiter, requireWorkerSession, async (r
     args: [hashPassword(newPassword), id],
   });
   // Keep the session that just made this change alive; revoke every other outstanding session for this worker.
-  const currentTokenHash = hashToken(req.cookies[WORKER_SESSION_COOKIE]);
+  const currentTokenHash = hashToken(readSessionToken(req, WORKER_SESSION_COOKIE));
   await db.execute({
     sql: 'DELETE FROM worker_sessions WHERE worker_id = ? AND token != ?',
     args: [id, currentTokenHash],
@@ -117,7 +117,13 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
     totalWorkerPay += workerPay;
     totalWorkerPayNGN += workerPayNGN;
     if (!e.paid) { unpaidWorkerPay += workerPay; unpaidWorkerPayNGN += workerPayNGN; }
-    return { ...e, jobName: row.job_name || null, workerPay, workerPayNGN };
+    // Explicit allow-list rather than spreading the admin record: the admin's entry notes and
+    // payment source (personal vs official funds) are the admin's own bookkeeping and must not
+    // reach the worker's browser, even though the worker UI never displays them.
+    return {
+      id: e.id, date: e.date, hours: e.hours, paid: e.paid, periodId: e.periodId,
+      jobName: row.job_name || null, workerPay, workerPayNGN,
+    };
   });
 
   const timerRows = (await db.execute({

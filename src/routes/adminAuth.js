@@ -1,8 +1,8 @@
-import { Router } from 'express';
+import { Router } from '../lib/router.js';
 import crypto from 'node:crypto';
 import { db } from '../db/client.js';
 import { SIGNUP_CODE } from '../config.js';
-import { SESSION_COOKIE, SESSION_TTL_MS, uid, hashToken, hashPassword, verifyPassword, safeEqual } from '../lib/auth.js';
+import { SESSION_COOKIE, SESSION_TTL_MS, uid, hashToken, hashPassword, verifyPassword, safeEqual, readSessionToken } from '../lib/auth.js';
 import { parseAccountSignupInput } from '../lib/validation.js';
 import { isValidSession } from '../middleware/requireAdmin.js';
 import { loginLimiter, signupLimiter } from '../middleware/rateLimit.js';
@@ -72,7 +72,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
 });
 
 router.post('/logout', async (req, res) => {
-  const token = req.cookies[SESSION_COOKIE];
+  const token = readSessionToken(req, SESSION_COOKIE);
   if (token) await db.execute({ sql: 'DELETE FROM admin_sessions WHERE token = ?', args: [hashToken(token)] });
   res.clearCookie(SESSION_COOKIE);
   res.json({ ok: true });

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from '../lib/router.js';
 import { db } from '../db/client.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import { mapTimerSession } from '../lib/mappers.js';
