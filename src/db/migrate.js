@@ -277,6 +277,22 @@ export async function migrate() {
   await db.execute('CREATE INDEX IF NOT EXISTS idx_jobs_account ON jobs(account_id)');
   await db.execute('CREATE INDEX IF NOT EXISTS idx_entries_job ON entries(job_id)');
 
+  // A job can pay in USD. Its rate is stored in USD, and each entry logged against it locks in
+  // that day's USD→CAD rate (entries.usd_cad_rate) so past pay never shifts as rates move.
+  // settings.usd_cad_rate keeps the last rate fetched, as a fallback when the rate service is down.
+  const jobCols = (await db.execute('PRAGMA table_info(jobs)')).rows.map(r => r.name);
+  if (!jobCols.includes('currency')) {
+    await db.execute("ALTER TABLE jobs ADD COLUMN currency TEXT NOT NULL DEFAULT 'CAD'");
+  }
+  const entryCols3 = (await db.execute('PRAGMA table_info(entries)')).rows.map(r => r.name);
+  if (!entryCols3.includes('usd_cad_rate')) {
+    await db.execute('ALTER TABLE entries ADD COLUMN usd_cad_rate REAL');
+  }
+  const settingsCols3 = (await db.execute('PRAGMA table_info(settings)')).rows.map(r => r.name);
+  if (!settingsCols3.includes('usd_cad_rate')) {
+    await db.execute('ALTER TABLE settings ADD COLUMN usd_cad_rate REAL');
+  }
+
   // One-time backfill: the first time periods are introduced, everything logged so far
   // predates the feature and was worked in July, so it becomes the initial "July 2026" period.
   // (In production this is already permanently inert — periodCount is never 0 there anymore.

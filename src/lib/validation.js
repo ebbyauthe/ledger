@@ -21,7 +21,7 @@ export function parseEntryInput(body) {
 // fxMode defaults to 'shared' (track the account's exchange rate) unless explicitly 'custom',
 // in which case a valid exchangeRate is also required.
 export function parseJobInput(body) {
-  const { name, rate, taxPercent, fxMode, exchangeRate } = body || {};
+  const { name, rate, currency, taxPercent, fxMode, exchangeRate } = body || {};
   const cleanName = typeof name === 'string' ? name.trim().slice(0, 100) : '';
   if (!cleanName) return null;
   if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) return null;
@@ -32,7 +32,9 @@ export function parseJobInput(body) {
     if (typeof exchangeRate !== 'number' || !Number.isFinite(exchangeRate) || exchangeRate <= 0) return null;
     customRate = exchangeRate;
   }
-  return { name: cleanName, rate, taxPercent, fxMode: mode, exchangeRate: customRate };
+  // rate is in this currency; USD rates are converted to CAD per entry at logging time.
+  const cleanCurrency = currency === 'USD' ? 'USD' : 'CAD';
+  return { name: cleanName, rate, currency: cleanCurrency, taxPercent, fxMode: mode, exchangeRate: customRate };
 }
 
 // Reserved so a business handle can never collide with an existing route prefix or static asset.

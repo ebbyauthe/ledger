@@ -5,14 +5,14 @@ import {
   groupEntriesByPeriod, currentPeriod, calcAllPeriodsTotals, computePaymentDate,
   calcMonthlyProgression, getAvailableMonths, monthLabel, calcMonthTotals, calcAllMonthsTotals, shortMonthLabel,
 } from './state.js';
-import { fmtCAD, fmtNGN, fmtDuration, fmtClockBoth, fmtDayTZ, fmtWhenCell, fmtPaymentDate, fmtDateLong, escapeHtml, TZ_QC } from './format.js';
+import { fmtCAD, fmtNGN, fmtUSD, fmtDuration, fmtClockBoth, fmtDayTZ, fmtWhenCell, fmtPaymentDate, fmtDateLong, escapeHtml, TZ_QC } from './format.js';
 import { openModal, modalOpen } from './modal.js';
 import { renderProgressionChart } from './charts.js';
 import { getTheme, setTheme } from './theme.js';
 import {
   saveSettings, fetchExchangeRate, addWorker, addPeriod, updateWorkerShare, resetWorkerPassword,
   addEntryAdmin, deleteEntryAdmin, setEntryPaid, markAllPaid, addPaymentAdmin, deletePaymentAdmin,
-  setTimerLogged, deleteWorker, loginAdmin, signupAdmin, addJob, updateJob,
+  setTimerLogged, deleteWorker, loginAdmin, signupAdmin, addJob, updateJob, fetchUsdCadRate, getLiveUsdCadRate,
 } from './admin-data.js';
 
 let selectedMonthTeam = new Date().toISOString().slice(0, 7);
@@ -46,6 +46,7 @@ export async function bootAdmin(){
 async function loadAdminState(){
   replaceState(await api('/api/admin/state'));
   if(!state.settings.exchangeManual) fetchExchangeRate();
+  fetchUsdCadRate();
   render();
   startAdminPolling();
 }
@@ -430,7 +431,7 @@ function renderMain(){
             const job = findJob(e.jobId);
             return `<tr>
               <td data-label="Date">${e.date}</td>
-              <td data-label="Job">${escapeHtml(job ? job.name : 'Unknown')}</td>
+              <td data-label="Job">${escapeHtml(job ? job.name : 'Unknown')}${job && job.currency === 'USD' && e.usdCadRate ? `<div class="fx-note">USD @ ${e.usdCadRate.toFixed(4)}</div>` : ''}</td>
               <td data-label="Hours">${e.hours.toFixed(2)}</td>
               <td data-label="Gross">${fmtCAD(c.gross)}</td>
               <td data-label="Worker pay">${fmtCAD(c.workerPay)}</td>
@@ -1090,6 +1091,12 @@ function renderMonthlyMain(main){
   };
 }
 
+function jobRateCell(j){
+  if(j.currency !== 'USD') return `${fmtCAD(j.rate)}/hr`;
+  const usdRate = getLiveUsdCadRate();
+  return `${fmtUSD(j.rate)}/hr${usdRate ? `<div class="fx-note">≈ ${fmtCAD(j.rate * usdRate)}/hr today</div>` : ''}`;
+}
+
 function renderJobsMain(main){
   const s = state.settings;
   main.innerHTML = `
@@ -1112,13 +1119,13 @@ function renderJobsMain(main){
     <div class="entries-card">
       ${state.jobs.length ? `
       <table>
-        <thead><tr><th>Name</th><th>Rate (CAD/hr)</th><th>Tax %</th><th>Exchange rate</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Hourly rate</th><th>Tax %</th><th>CAD → ₦ rate</th><th></th></tr></thead>
         <tbody>
           ${state.jobs.map(j => `<tr>
             <td data-label="Name">${escapeHtml(j.name)}</td>
-            <td data-label="Rate (CAD/hr)">${fmtCAD(j.rate)}</td>
+            <td data-label="Hourly rate">${jobRateCell(j)}</td>
             <td data-label="Tax %">${j.taxPercent}%</td>
-            <td data-label="Exchange rate">${j.fxMode === 'custom' ? `Custom (₦${j.exchangeRate ? j.exchangeRate.toFixed(2) : '—'})` : 'Shared default'}</td>
+            <td data-label="CAD → ₦ rate">${j.fxMode === 'custom' ? `Custom (₦${j.exchangeRate ? j.exchangeRate.toFixed(2) : '—'})` : 'Shared default'}</td>
             <td data-label=""><button class="settings-toggle edit-job-btn" data-id="${j.id}">Edit</button></td>
           </tr>`).join('')}
         </tbody>
@@ -1147,6 +1154,9 @@ function renderJobsMain(main){
 
   const openJobModal = (job) => {
     const fxCustom = !!(job && job.fxMode === 'custom');
+    const isUsd = !!(job && job.currency === 'USD');
+    const usdRate = getLiveUsdCadRate();
+    const usdHint = `Each entry is converted to CAD at the rate on the day it's logged, and keeps that value.${usdRate ? ` Today: 1 USD = ${usdRate.toFixed(4)} CAD.` : ''}`;
     openModal(`
       <h3>${job ? 'Edit job' : 'Add job'}</h3>
       <div class="field">
@@ -1154,8 +1164,16 @@ function renderJobsMain(main){
         <input type="text" id="modalJobName" value="${job ? escapeHtml(job.name) : ''}" placeholder="e.g. Client B" autofocus>
       </div>
       <div class="field">
-        <label>Hourly rate (CAD)</label>
+        <label>Paid in</label>
+        <select id="modalJobCurrency">
+          <option value="CAD" ${!isUsd ? 'selected' : ''}>CAD — Canadian dollars</option>
+          <option value="USD" ${isUsd ? 'selected' : ''}>USD — US dollars, converted to CAD</option>
+        </select>
+      </div>
+      <div class="field">
+        <label id="modalJobRateLabel">Hourly rate (${isUsd ? 'USD' : 'CAD'})</label>
         <input type="number" id="modalJobRate" value="${job ? job.rate : RATE_DEFAULT}" step="0.01" min="0">
+        <div class="hint" id="modalJobUsdHint" style="${isUsd ? '' : 'display:none;'}">${usdHint}</div>
       </div>
       <div class="field">
         <label>Tax (%)</label>
@@ -1172,6 +1190,7 @@ function renderJobsMain(main){
     `, async () => {
       const name = document.getElementById('modalJobName').value.trim();
       const rate = parseFloat(document.getElementById('modalJobRate').value);
+      const currency = document.getElementById('modalJobCurrency').value;
       const taxPercent = parseFloat(document.getElementById('modalJobTax').value);
       const fxMode = document.getElementById('modalJobFxMode').value;
       const exchangeRate = fxMode === 'custom' ? parseFloat(document.getElementById('modalJobFxRate').value) : undefined;
@@ -1180,8 +1199,8 @@ function renderJobsMain(main){
       if(isNaN(taxPercent) || taxPercent < 0 || taxPercent > 100){ alert('Tax must be between 0 and 100.'); return false; }
       if(fxMode === 'custom' && (isNaN(exchangeRate) || exchangeRate <= 0)){ alert('Enter a custom exchange rate greater than 0.'); return false; }
       try{
-        if(job) await updateJob(job.id, { name, rate, taxPercent, fxMode, exchangeRate });
-        else await addJob({ name, rate, taxPercent, fxMode, exchangeRate });
+        if(job) await updateJob(job.id, { name, rate, currency, taxPercent, fxMode, exchangeRate });
+        else await addJob({ name, rate, currency, taxPercent, fxMode, exchangeRate });
         render();
         return true;
       }catch(e){
@@ -1190,6 +1209,11 @@ function renderJobsMain(main){
       }
     }, job ? 'Save' : 'Add');
 
+    document.getElementById('modalJobCurrency').onchange = (e) => {
+      const usd = e.target.value === 'USD';
+      document.getElementById('modalJobRateLabel').textContent = `Hourly rate (${usd ? 'USD' : 'CAD'})`;
+      document.getElementById('modalJobUsdHint').style.display = usd ? '' : 'none';
+    };
     document.getElementById('modalJobFxMode').onchange = (e) => {
       document.getElementById('modalJobFxRate').style.display = e.target.value === 'custom' ? '' : 'none';
     };

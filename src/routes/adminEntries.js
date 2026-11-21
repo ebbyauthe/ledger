@@ -4,6 +4,7 @@ import { requireAdmin } from '../middleware/requireAdmin.js';
 import { uid } from '../lib/auth.js';
 import { parseEntryInput } from '../lib/validation.js';
 import { mapEntry } from '../lib/mappers.js';
+import { resolveUsdCadRate } from '../lib/fx.js';
 
 const router = Router();
 
@@ -17,9 +18,10 @@ async function getDefaultJobId(accountId) {
   return row ? row.id : null;
 }
 
+// Returns { entry } on success, or { status, error } so the route can respond accordingly.
 async function addEntry(workerId, accountId, { date, hours, note, periodId, jobId }) {
   const worker = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ? AND account_id = ?', args: [workerId, accountId] })).rows[0];
-  if (!worker) return null;
+  if (!worker) return { status: 404, error: 'worker not found' };
   let resolvedPeriodId = periodId;
   if (resolvedPeriodId) {
     const period = (await db.execute({ sql: 'SELECT id FROM periods WHERE id = ? AND account_id = ?', args: [resolvedPeriodId, accountId] })).rows[0];
@@ -32,12 +34,22 @@ async function addEntry(workerId, accountId, { date, hours, note, periodId, jobI
     if (!job) resolvedJobId = null;
   }
   if (!resolvedJobId) resolvedJobId = await getDefaultJobId(accountId);
+
+  // A USD job's entry locks in today's USD→CAD rate, so its pay never shifts as rates move.
+  // Refuse rather than guess if no rate can be had.
+  const job = (await db.execute({ sql: 'SELECT currency FROM jobs WHERE id = ?', args: [resolvedJobId] })).rows[0];
+  let usdCadRate = null;
+  if (job?.currency === 'USD') {
+    usdCadRate = await resolveUsdCadRate(accountId);
+    if (!usdCadRate) return { status: 503, error: "couldn't get the USD to CAD exchange rate right now, try again in a minute" };
+  }
+
   const id = uid();
   await db.execute({
-    sql: 'INSERT INTO entries (id, worker_id, date, hours, note, period_id, account_id, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    args: [id, workerId, date, hours, note || '', resolvedPeriodId, accountId, resolvedJobId],
+    sql: 'INSERT INTO entries (id, worker_id, date, hours, note, period_id, account_id, job_id, usd_cad_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [id, workerId, date, hours, note || '', resolvedPeriodId, accountId, resolvedJobId, usdCadRate],
   });
-  return { id, date, hours, note: note || '', paid: false, periodId: resolvedPeriodId, jobId: resolvedJobId };
+  return { entry: { id, date, hours, note: note || '', paid: false, periodId: resolvedPeriodId, jobId: resolvedJobId, usdCadRate } };
 }
 
 router.post('/entries/:workerId', requireAdmin, async (req, res) => {
@@ -46,9 +58,9 @@ router.post('/entries/:workerId', requireAdmin, async (req, res) => {
   if (!parsed) {
     return res.status(400).json({ error: 'invalid date/time, or hours must be between 0 and 24' });
   }
-  const entry = await addEntry(workerId, req.accountId, parsed);
-  if (!entry) return res.status(404).json({ error: 'worker not found' });
-  res.status(201).json(entry);
+  const result = await addEntry(workerId, req.accountId, parsed);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.status(201).json(result.entry);
 });
 
 router.delete('/entries/:workerId/:entryId', requireAdmin, async (req, res) => {

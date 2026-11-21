@@ -2,6 +2,7 @@ export function mapSettings(row) {
   return {
     exchangeRate: row.exchange_rate,
     exchangeManual: !!row.exchange_manual,
+    usdCadRate: row.usd_cad_rate ?? null,
   };
 }
 
@@ -10,6 +11,7 @@ export function mapJob(row) {
     id: row.id,
     name: row.name,
     rate: row.rate,
+    currency: row.currency === 'USD' ? 'USD' : 'CAD',
     taxPercent: row.tax_percent,
     fxMode: row.fx_mode,
     exchangeRate: row.exchange_rate,
@@ -31,6 +33,7 @@ export function mapEntry(row) {
     paymentSource: row.payment_source || null,
     periodId: row.period_id || null,
     jobId: row.job_id || null,
+    usdCadRate: row.usd_cad_rate ?? null,
   };
 }
 

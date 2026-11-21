@@ -29,14 +29,22 @@ export function findJob(jobId){
 
 export function resolveJobRate(jobId){
   const job = findJob(jobId);
-  if(!job) return { rate: RATE_DEFAULT, taxPercent: TAX_DEFAULT, exchangeRate: state.settings.exchangeRate || 0 };
+  if(!job) return { rate: RATE_DEFAULT, currency: 'CAD', taxPercent: TAX_DEFAULT, exchangeRate: state.settings.exchangeRate || 0 };
   const exchangeRate = job.fxMode === 'custom' ? (job.exchangeRate || 0) : (state.settings.exchangeRate || 0);
-  return { rate: job.rate, taxPercent: job.taxPercent, exchangeRate };
+  return { rate: job.rate, currency: job.currency || 'CAD', taxPercent: job.taxPercent, exchangeRate };
+}
+
+// A job's hourly rate in CAD for one entry. USD jobs convert at the rate locked onto that entry
+// when it was logged; the account's last-known rate only covers entries that somehow lack one.
+// Mirrors cadHourlyRate in src/lib/fx.js — keep the two in sync.
+export function cadHourlyRate(rate, currency, entryUsdCad, fallbackUsdCad){
+  if(currency !== 'USD') return rate || 0;
+  return (rate || 0) * (entryUsdCad || fallbackUsdCad || 0);
 }
 
 export function calcEntryRow(entry, sharePct){
-  const { rate, taxPercent, exchangeRate } = resolveJobRate(entry.jobId);
-  const gross = entry.hours * rate;
+  const { rate, currency, taxPercent, exchangeRate } = resolveJobRate(entry.jobId);
+  const gross = entry.hours * cadHourlyRate(rate, currency, entry.usdCadRate, state.settings.usdCadRate);
   const tax = gross * taxPercent / 100;
   const workerPay = gross * sharePct / 100;
   const workerPayNGN = workerPay * exchangeRate;

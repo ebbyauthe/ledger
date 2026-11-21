@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import { uid } from '../lib/auth.js';
 import { bestFitSubset, parseMatchedEntryIds } from '../lib/subsetSum.js';
+import { cadHourlyRate } from '../lib/fx.js';
 
 const router = Router();
 
@@ -22,15 +23,16 @@ router.post('/payments/:workerId', requireAdmin, async (req, res) => {
   const cleanNote = typeof note === 'string' ? note.trim().slice(0, 500) : '';
 
   const unpaidRows = (await db.execute({
-    sql: `SELECT entries.*, COALESCE(jobs.rate, 0) AS job_rate
+    sql: `SELECT entries.*, COALESCE(jobs.rate, 0) AS job_rate, jobs.currency AS job_currency
           FROM entries LEFT JOIN jobs ON jobs.id = entries.job_id
           WHERE entries.worker_id = ? AND entries.account_id = ? AND entries.paid = 0
           ORDER BY entries.date ASC`,
     args: [workerId, accountId],
   })).rows;
+  const settingsRow = (await db.execute({ sql: 'SELECT usd_cad_rate FROM settings WHERE account_id = ?', args: [accountId] })).rows[0];
   const items = unpaidRows.map(row => ({
     id: row.id,
-    cents: Math.round(row.hours * row.job_rate * worker.share_percent / 100 * 100),
+    cents: Math.round(row.hours * cadHourlyRate(row.job_rate, row.job_currency, row.usd_cad_rate, settingsRow?.usd_cad_rate) * worker.share_percent / 100 * 100),
   }));
 
   const targetCents = Math.round(amount * 100);

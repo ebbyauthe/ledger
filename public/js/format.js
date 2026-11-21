@@ -4,6 +4,7 @@ export const TZ_NG = 'Africa/Lagos';
 
 export const fmtCAD = n => 'CA$' + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
 export const fmtNGN = n => '₦' + n.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
+export const fmtUSD = n => 'US$' + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
 
 export function fmtDuration(ms){
   if(!ms || ms < 0) ms = 0;

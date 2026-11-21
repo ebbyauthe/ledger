@@ -35,6 +35,26 @@ export async function fetchExchangeRate(){
   }
 }
 
+// Today's USD→CAD rate, for display only (the Jobs page and job form). Pay math never uses
+// it: the server locks the rate onto each USD entry when it's logged. Kept out of `state`
+// because replaceState wipes unknown keys on every poll.
+let liveUsdCadRate = null;
+export function getLiveUsdCadRate(){
+  return liveUsdCadRate || state.settings.usdCadRate || null;
+}
+export async function fetchUsdCadRate(){
+  try{
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    const rate = (await res.json())?.rates?.CAD;
+    if(typeof rate === 'number' && rate > 0){
+      liveUsdCadRate = rate;
+      render();
+    }
+  }catch(e){
+    console.error('USD rate fetch failed', e);
+  }
+}
+
 export async function addWorker(name, share){
   const w = await api('/api/admin/workers', { method: 'POST', body: { name, sharePercent: share } });
   state.workers.push(w);

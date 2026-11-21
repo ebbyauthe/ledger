@@ -5,6 +5,7 @@ import { requireWorkerSession } from '../middleware/requireWorkerSession.js';
 import { loginLimiter, pickerLimiter } from '../middleware/rateLimit.js';
 import { WORKER_SESSION_COOKIE, SESSION_TTL_MS, uid, hashToken, hashPassword, verifyPassword, readSessionToken } from '../lib/auth.js';
 import { mapEntry, mapTimerSession, mapPeriod } from '../lib/mappers.js';
+import { cadHourlyRate } from '../lib/fx.js';
 
 const router = Router();
 
@@ -92,7 +93,7 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
   if (!workerRow) return res.status(404).json({ error: 'not found' });
   const settingsRow = (await db.execute({ sql: 'SELECT * FROM settings WHERE account_id = ?', args: [workerRow.account_id] })).rows[0];
   const entryRows = (await db.execute({
-    sql: `SELECT entries.*, jobs.rate AS job_rate, jobs.fx_mode AS job_fx_mode,
+    sql: `SELECT entries.*, jobs.rate AS job_rate, jobs.currency AS job_currency, jobs.fx_mode AS job_fx_mode,
                  jobs.exchange_rate AS job_exchange_rate, jobs.name AS job_name
           FROM entries LEFT JOIN jobs ON jobs.id = entries.job_id
           WHERE entries.worker_id = ? AND entries.account_id = ?
@@ -110,7 +111,7 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
   const entries = entryRows.map(row => {
     const e = mapEntry(row);
     const fx = (row.job_fx_mode === 'custom' && row.job_exchange_rate) ? row.job_exchange_rate : (settingsRow.exchange_rate || 0);
-    const gross = e.hours * (row.job_rate || 0);
+    const gross = e.hours * cadHourlyRate(row.job_rate, row.job_currency, row.usd_cad_rate, settingsRow.usd_cad_rate);
     const workerPay = (gross * sharePct) / 100;
     const workerPayNGN = workerPay * fx;
     totalHours += e.hours;
