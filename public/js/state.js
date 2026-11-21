@@ -4,10 +4,11 @@ export const SHARE_DEFAULT = 50;
 export const OVERVIEW_ID = '__overview__';
 export const MONTHLY_ID = '__monthly__';
 export const JOBS_ID = '__jobs__';
+export const MY_HOURS_ID = '__my_hours__';
 
 export const state = {
   settings: { exchangeRate: null, exchangeManual: false },
-  workers: [], entries: {}, timers: {}, payments: {}, periods: [], jobs: [],
+  workers: [], entries: {}, timers: {}, payments: {}, periods: [], jobs: [], personalEntries: [],
 };
 
 // `state` gets reassigned wholesale in a couple of places (loading fresh data from the server).

@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import {
-  state, replaceState, SHARE_DEFAULT, RATE_DEFAULT, TAX_DEFAULT, OVERVIEW_ID, MONTHLY_ID, JOBS_ID,
+  state, replaceState, SHARE_DEFAULT, RATE_DEFAULT, TAX_DEFAULT, OVERVIEW_ID, MONTHLY_ID, JOBS_ID, MY_HOURS_ID,
   calcWorkerTotals, calcAllWorkersTotals, isWorkerClockedIn, calcEntryRow, findJob,
   groupEntriesByPeriod, currentPeriod, calcAllPeriodsTotals, computePaymentDate,
   calcMonthlyProgression, getAvailableMonths, monthLabel, calcMonthTotals, calcAllMonthsTotals, shortMonthLabel,
@@ -13,6 +13,7 @@ import {
   saveSettings, fetchExchangeRate, addWorker, addPeriod, updateWorkerShare, resetWorkerPassword,
   addEntryAdmin, deleteEntryAdmin, setEntryPaid, markAllPaid, addPaymentAdmin, deletePaymentAdmin,
   setTimerLogged, deleteWorker, loginAdmin, signupAdmin, addJob, updateJob, fetchUsdCadRate, getLiveUsdCadRate,
+  addPersonalEntry, deletePersonalEntry, savePersonalRate,
 } from './admin-data.js';
 
 let selectedMonthTeam = new Date().toISOString().slice(0, 7);
@@ -282,6 +283,12 @@ function renderSidebar(){
   jobsLi.onclick = () => { selectedWorkerId = JOBS_ID; render(); };
   ul.appendChild(jobsLi);
 
+  const myHoursLi = document.createElement('li');
+  myHoursLi.className = selectedWorkerId === MY_HOURS_ID ? 'active' : '';
+  myHoursLi.innerHTML = `<span>🧑‍💻 My hours</span>`;
+  myHoursLi.onclick = () => { selectedWorkerId = MY_HOURS_ID; render(); };
+  ul.appendChild(myHoursLi);
+
   state.workers.forEach(w => {
     const totals = calcWorkerTotals(w.id);
     const clockedIn = isWorkerClockedIn(w.id);
@@ -305,6 +312,12 @@ function renderMain(){
   if(selectedWorkerId === MONTHLY_ID){
     main.classList.remove('has-tabs');
     renderMonthlyMain(main);
+    return;
+  }
+
+  if(selectedWorkerId === MY_HOURS_ID){
+    main.classList.remove('has-tabs');
+    renderMyHoursMain(main);
     return;
   }
 
@@ -1089,6 +1102,182 @@ function renderMonthlyMain(main){
       return true;
     });
   };
+}
+
+/* ---------------- My hours (the owner's own work log) ---------------- */
+
+let myHoursMonth = new Date().toISOString().slice(0, 7);
+let myHoursMode = 'daily';
+
+// Earnings are stamped per entry (USD rate + that day's USD→CAD rate), so a later raise or a
+// rate swing never rewrites past entries.
+const personalEarnedUSD = e => e.hours * e.rate;
+const personalEarnedCAD = e => e.hours * e.rate * e.usdCadRate;
+
+function renderMyHoursMain(main){
+  const all = state.personalEntries || [];
+  const rate = state.settings.personalRate ?? 17;
+  const isOverall = myHoursMode === 'overall';
+  // calcMonthlyProgression/calcAllMonthsTotals read "workerPay"; here that slot carries US$ earned.
+  const series = all.map(e => ({ date: e.date, hours: e.hours, workerPay: personalEarnedUSD(e) }));
+  const months = getAvailableMonths(series);
+  const month = months.includes(myHoursMonth) ? myHoursMonth : months[0];
+
+  const inScope = isOverall ? all : all.filter(e => e.date.slice(0, 7) === month);
+  const sum = (list, fn) => list.reduce((t, e) => t + fn(e), 0);
+  const scopeHours = sum(inScope, e => e.hours), scopeUSD = sum(inScope, personalEarnedUSD), scopeCAD = sum(inScope, personalEarnedCAD);
+  const allHours = sum(all, e => e.hours), allUSD = sum(all, personalEarnedUSD), allCAD = sum(all, personalEarnedCAD);
+
+  let hoursPoints, payPoints, xMax, formatX, formatTick;
+  if(isOverall){
+    const t = calcAllMonthsTotals(series);
+    ({ hoursPoints, payPoints, xMax } = t);
+    formatX = x => monthLabel(t.months[x - 1]);
+    formatTick = x => shortMonthLabel(t.months[x - 1]);
+  }else{
+    const p = calcMonthlyProgression(series, month);
+    hoursPoints = p.dailyHoursPoints; payPoints = p.dailyPayPoints; xMax = p.daysInMonth;
+    formatX = x => `Day ${x}`;
+  }
+
+  const sorted = all.slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  const groups = [];
+  sorted.forEach(e => {
+    const ym = e.date.slice(0, 7);
+    if(!groups.length || groups[groups.length - 1].ym !== ym) groups.push({ ym, entries: [] });
+    groups[groups.length - 1].entries.push(e);
+  });
+
+  main.innerHTML = `
+    <div class="worker-header">
+      <div>
+        <h1>My hours</h1>
+        <div class="sub">Your own work log — kept separate from your workers' totals</div>
+      </div>
+      <div class="share-field">
+        Hourly rate US$
+        <input type="number" id="myRateInput" min="0.01" step="0.01" value="${rate}">
+      </div>
+    </div>
+
+    <div class="progression-section">
+      <div class="progression-header">
+        <h2>${isOverall ? 'All months' : escapeHtml(monthLabel(month))}</h2>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="segmented">
+            <button type="button" class="segmented-btn ${!isOverall ? 'active' : ''}" data-mode="daily">Daily</button>
+            <button type="button" class="segmented-btn ${isOverall ? 'active' : ''}" data-mode="overall">Overall</button>
+          </div>
+          ${isOverall ? '' : `
+          <select class="month-select" id="myMonthSelect">
+            ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${escapeHtml(monthLabel(m))}</option>`).join('')}
+          </select>`}
+        </div>
+      </div>
+      <div class="receipt">
+        <div class="receipt-grid wv-grid">
+          <div class="receipt-item"><div class="label">Hours</div><div class="value">${scopeHours.toFixed(1)}</div></div>
+          <div class="receipt-item highlight"><div class="label">Earned (US$)</div><div class="value">${fmtUSD(scopeUSD)}</div></div>
+          <div class="receipt-item highlight"><div class="label">Earned (CA$)</div><div class="value">${fmtCAD(scopeCAD)}</div></div>
+        </div>
+        ${isOverall ? '' : `
+        <hr class="receipt-divider">
+        <div class="receipt-item"><div class="label">All time</div><div class="value">${allHours.toFixed(1)}h · ${fmtUSD(allUSD)} · ${fmtCAD(allCAD)}</div></div>`}
+      </div>
+      <div class="chart-pair">
+        <div class="chart-card">
+          <div class="chart-card-title">${isOverall ? 'Hours per month' : 'Hours per day'}</div>
+          <div class="chart-card-total">${scopeHours.toFixed(1)}h</div>
+          <div id="myHoursChart"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">${isOverall ? 'Earned per month' : 'Earned per day'} (US$)</div>
+          <div class="chart-card-total">${fmtUSD(scopeUSD)}</div>
+          <div id="myEarnedChart"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="entries-card">
+      <div class="add-entry-row">
+        <input type="date" name="date" id="myEntryDate" value="${new Date().toISOString().slice(0,10)}">
+        <input type="number" name="hours" id="myEntryHours" step="0.01" min="0.01" max="24" placeholder="Hours">
+        <input type="text" name="note" id="myEntryNote" placeholder="What did you work on? (optional)">
+        <button class="btn-primary" id="myAddEntryBtn">Add entry</button>
+      </div>
+      ${groups.length ? groups.map(g => `
+      <div style="padding:12px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:500;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
+        <span>${escapeHtml(monthLabel(g.ym))}</span>
+        <span>${g.entries.reduce((t, e) => t + e.hours, 0).toFixed(2)}h · ${fmtUSD(g.entries.reduce((t, e) => t + personalEarnedUSD(e), 0))}</span>
+      </div>
+      <table>
+        <thead><tr><th>Date</th><th>Hours</th><th>Rate</th><th>Earned (US$)</th><th>Earned (CA$)</th><th>Note</th><th></th></tr></thead>
+        <tbody>
+          ${g.entries.map(e => `<tr>
+            <td data-label="Date">${e.date}</td>
+            <td data-label="Hours">${e.hours.toFixed(2)}</td>
+            <td data-label="Rate">${fmtUSD(e.rate)}/hr<div class="fx-note">USD @ ${e.usdCadRate.toFixed(4)}</div></td>
+            <td data-label="Earned (US$)">${fmtUSD(personalEarnedUSD(e))}</td>
+            <td data-label="Earned (CA$)">${fmtCAD(personalEarnedCAD(e))}</td>
+            <td class="note-col" data-label="Note">${escapeHtml(e.note || '')}</td>
+            <td data-label=""><button class="del-btn my-del-btn" data-id="${e.id}">Delete</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`).join('') : `<div class="empty-entries">No hours logged yet. Add your first entry above.</div>`}
+    </div>
+  `;
+
+  renderProgressionChart(main.querySelector('#myHoursChart'), {
+    points: hoursPoints, xMax, formatX, formatTick,
+    colorVar: '--accent', formatValue: v => `${v.toFixed(1)}h`, emptyLabel: 'No hours logged yet',
+  });
+  renderProgressionChart(main.querySelector('#myEarnedChart'), {
+    points: payPoints, xMax, formatX, formatTick,
+    colorVar: '--positive', formatValue: v => fmtUSD(v), emptyLabel: 'Nothing earned yet',
+  });
+
+  main.querySelectorAll('.segmented-btn').forEach(btn => {
+    btn.onclick = () => { myHoursMode = btn.dataset.mode; renderMain(); };
+  });
+  const monthSelect = document.getElementById('myMonthSelect');
+  if(monthSelect) monthSelect.onchange = (e) => { myHoursMonth = e.target.value; renderMain(); };
+
+  document.getElementById('myRateInput').onchange = async (e) => {
+    const v = parseFloat(e.target.value);
+    if(isNaN(v) || v <= 0){ e.target.value = rate; return; }
+    try{
+      await savePersonalRate(v);
+      renderMain();
+    }catch(err){
+      alert('Could not save your rate: ' + err.message);
+      e.target.value = rate;
+    }
+  };
+
+  document.getElementById('myAddEntryBtn').onclick = async () => {
+    const date = document.getElementById('myEntryDate').value;
+    const hours = parseFloat(document.getElementById('myEntryHours').value);
+    const note = document.getElementById('myEntryNote').value.trim();
+    if(!date || !hours || hours <= 0){ alert('Enter a date and number of hours.'); return; }
+    try{
+      await addPersonalEntry({ date, hours, note });
+      myHoursMonth = date.slice(0, 7);
+      renderMain();
+    }catch(err){
+      alert('Could not save entry: ' + err.message);
+    }
+  };
+
+  main.querySelectorAll('.my-del-btn').forEach(btn => {
+    btn.onclick = async () => {
+      try{
+        await deletePersonalEntry(btn.dataset.id);
+        renderMain();
+      }catch(err){
+        alert('Could not delete entry: ' + err.message);
+      }
+    };
+  });
 }
 
 function jobRateCell(j){

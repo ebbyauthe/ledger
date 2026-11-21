@@ -8,6 +8,7 @@ import adminTimers from './adminTimers.js';
 import adminPayments from './adminPayments.js';
 import adminPeriods from './adminPeriods.js';
 import adminJobs from './adminJobs.js';
+import adminPersonal from './adminPersonal.js';
 import worker from './worker.js';
 
 const router = Router();
@@ -21,6 +22,7 @@ router.use('/api/admin', adminTimers);
 router.use('/api/admin', adminPayments);
 router.use('/api/admin', adminPeriods);
 router.use('/api/admin', adminJobs);
+router.use('/api/admin', adminPersonal);
 router.use('/api', worker);
 
 export default router;

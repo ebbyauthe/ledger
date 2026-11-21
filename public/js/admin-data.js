@@ -55,6 +55,23 @@ export async function fetchUsdCadRate(){
   }
 }
 
+/* ---------------- My hours (the owner's own work log) ---------------- */
+
+export async function addPersonalEntry(entry){
+  const e = await api('/api/admin/personal-entries', { method: 'POST', body: entry });
+  state.personalEntries.unshift(e);
+  return e;
+}
+
+export async function deletePersonalEntry(id){
+  await api(`/api/admin/personal-entries/${id}`, { method: 'DELETE' });
+  state.personalEntries = state.personalEntries.filter(e => e.id !== id);
+}
+
+export async function savePersonalRate(rate){
+  state.settings = await api('/api/admin/settings', { method: 'PUT', body: { personalRate: rate } });
+}
+
 export async function addWorker(name, share){
   const w = await api('/api/admin/workers', { method: 'POST', body: { name, sharePercent: share } });
   state.workers.push(w);

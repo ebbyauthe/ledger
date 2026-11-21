@@ -3,6 +3,7 @@ export function mapSettings(row) {
     exchangeRate: row.exchange_rate,
     exchangeManual: !!row.exchange_manual,
     usdCadRate: row.usd_cad_rate ?? null,
+    personalRate: row.personal_rate ?? 17,
   };
 }
 
@@ -58,6 +59,18 @@ export function mapPayment(row) {
     amount: row.amount,
     paymentSource: row.payment_source || null,
     note: row.note || '',
+    createdAt: row.created_at,
+  };
+}
+
+export function mapPersonalEntry(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    hours: row.hours,
+    note: row.note || '',
+    rate: row.rate,
+    usdCadRate: row.usd_cad_rate,
     createdAt: row.created_at,
   };
 }

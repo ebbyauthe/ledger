@@ -293,6 +293,27 @@ export async function migrate() {
     await db.execute('ALTER TABLE settings ADD COLUMN usd_cad_rate REAL');
   }
 
+  // The owner's own work hours ("My hours"), kept apart from worker entries so they never
+  // touch team totals, worker pay or anything the worker view can reach. Each entry stamps
+  // the USD hourly rate and that day's USD→CAD rate, so a later raise or rate swing never
+  // rewrites past earnings. settings.personal_rate is the USD rate new entries start from.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS personal_entries (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      hours REAL NOT NULL,
+      note TEXT,
+      rate REAL NOT NULL,
+      usd_cad_rate REAL NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_personal_entries_account ON personal_entries(account_id)');
+  if (!settingsCols3.includes('personal_rate')) {
+    await db.execute('ALTER TABLE settings ADD COLUMN personal_rate REAL NOT NULL DEFAULT 17');
+  }
+
   // One-time backfill: the first time periods are introduced, everything logged so far
   // predates the feature and was worked in July, so it becomes the initial "July 2026" period.
   // (In production this is already permanently inert — periodCount is never 0 there anymore.
