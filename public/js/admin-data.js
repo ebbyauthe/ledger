@@ -68,8 +68,9 @@ export async function deletePersonalEntry(id){
   state.personalEntries = state.personalEntries.filter(e => e.id !== id);
 }
 
-export async function savePersonalRate(rate){
-  state.settings = await api('/api/admin/settings', { method: 'PUT', body: { personalRate: rate } });
+// fields: { personalRate?, personalTaxPercent? } — whatever's omitted keeps its current value.
+export async function savePersonalSettings(fields){
+  state.settings = await api('/api/admin/settings', { method: 'PUT', body: fields });
 }
 
 export async function addWorker(name, share){

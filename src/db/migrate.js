@@ -313,6 +313,15 @@ export async function migrate() {
   if (!settingsCols3.includes('personal_rate')) {
     await db.execute('ALTER TABLE settings ADD COLUMN personal_rate REAL NOT NULL DEFAULT 17');
   }
+  // Tax on the owner's own earnings: stamped per entry like the rate, so a later change only
+  // applies going forward. The column default backfills entries logged before this existed.
+  if (!settingsCols3.includes('personal_tax_percent')) {
+    await db.execute('ALTER TABLE settings ADD COLUMN personal_tax_percent REAL NOT NULL DEFAULT 20');
+  }
+  const personalCols = (await db.execute('PRAGMA table_info(personal_entries)')).rows.map(r => r.name);
+  if (!personalCols.includes('tax_percent')) {
+    await db.execute('ALTER TABLE personal_entries ADD COLUMN tax_percent REAL NOT NULL DEFAULT 20');
+  }
 
   // One-time backfill: the first time periods are introduced, everything logged so far
   // predates the feature and was worked in July, so it becomes the initial "July 2026" period.

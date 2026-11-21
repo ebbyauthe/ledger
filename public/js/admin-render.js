@@ -13,7 +13,7 @@ import {
   saveSettings, fetchExchangeRate, addWorker, addPeriod, updateWorkerShare, resetWorkerPassword,
   addEntryAdmin, deleteEntryAdmin, setEntryPaid, markAllPaid, addPaymentAdmin, deletePaymentAdmin,
   setTimerLogged, deleteWorker, loginAdmin, signupAdmin, addJob, updateJob, fetchUsdCadRate, getLiveUsdCadRate,
-  addPersonalEntry, deletePersonalEntry, savePersonalRate,
+  addPersonalEntry, deletePersonalEntry, savePersonalSettings,
 } from './admin-data.js';
 
 let selectedMonthTeam = new Date().toISOString().slice(0, 7);
@@ -1109,24 +1109,28 @@ function renderMonthlyMain(main){
 let myHoursMonth = new Date().toISOString().slice(0, 7);
 let myHoursMode = 'daily';
 
-// Earnings are stamped per entry (USD rate + that day's USD→CAD rate), so a later raise or a
-// rate swing never rewrites past entries.
+// Earnings are stamped per entry (USD rate, tax % and that day's USD→CAD rate), so a later
+// raise, tax change or rate swing never rewrites past entries.
 const personalEarnedUSD = e => e.hours * e.rate;
-const personalEarnedCAD = e => e.hours * e.rate * e.usdCadRate;
+const personalTaxUSD = e => personalEarnedUSD(e) * (e.taxPercent ?? 20) / 100;
+const personalNetUSD = e => personalEarnedUSD(e) - personalTaxUSD(e);
+const personalNetCAD = e => personalNetUSD(e) * e.usdCadRate;
 
 function renderMyHoursMain(main){
   const all = state.personalEntries || [];
   const rate = state.settings.personalRate ?? 17;
+  const taxPct = state.settings.personalTaxPercent ?? 20;
   const isOverall = myHoursMode === 'overall';
-  // calcMonthlyProgression/calcAllMonthsTotals read "workerPay"; here that slot carries US$ earned.
-  const series = all.map(e => ({ date: e.date, hours: e.hours, workerPay: personalEarnedUSD(e) }));
+  // calcMonthlyProgression/calcAllMonthsTotals read "workerPay"; here that slot carries US$ after tax.
+  const series = all.map(e => ({ date: e.date, hours: e.hours, workerPay: personalNetUSD(e) }));
   const months = getAvailableMonths(series);
   const month = months.includes(myHoursMonth) ? myHoursMonth : months[0];
 
   const inScope = isOverall ? all : all.filter(e => e.date.slice(0, 7) === month);
   const sum = (list, fn) => list.reduce((t, e) => t + fn(e), 0);
-  const scopeHours = sum(inScope, e => e.hours), scopeUSD = sum(inScope, personalEarnedUSD), scopeCAD = sum(inScope, personalEarnedCAD);
-  const allHours = sum(all, e => e.hours), allUSD = sum(all, personalEarnedUSD), allCAD = sum(all, personalEarnedCAD);
+  const scopeHours = sum(inScope, e => e.hours), scopeGross = sum(inScope, personalEarnedUSD), scopeTax = sum(inScope, personalTaxUSD);
+  const scopeNet = sum(inScope, personalNetUSD), scopeNetCAD = sum(inScope, personalNetCAD);
+  const allHours = sum(all, e => e.hours), allNet = sum(all, personalNetUSD), allNetCAD = sum(all, personalNetCAD);
 
   let hoursPoints, payPoints, xMax, formatX, formatTick;
   if(isOverall){
@@ -1157,6 +1161,8 @@ function renderMyHoursMain(main){
       <div class="share-field">
         Hourly rate US$
         <input type="number" id="myRateInput" min="0.01" step="0.01" value="${rate}">
+        <span style="margin-left:10px;">Tax</span>
+        <input type="number" id="myTaxInput" min="0" max="100" step="0.1" value="${taxPct}">%
       </div>
     </div>
 
@@ -1175,14 +1181,16 @@ function renderMyHoursMain(main){
         </div>
       </div>
       <div class="receipt">
-        <div class="receipt-grid wv-grid">
+        <div class="receipt-grid">
           <div class="receipt-item"><div class="label">Hours</div><div class="value">${scopeHours.toFixed(1)}</div></div>
-          <div class="receipt-item highlight"><div class="label">Earned (US$)</div><div class="value">${fmtUSD(scopeUSD)}</div></div>
-          <div class="receipt-item highlight"><div class="label">Earned (CA$)</div><div class="value">${fmtCAD(scopeCAD)}</div></div>
+          <div class="receipt-item"><div class="label">Gross (US$)</div><div class="value">${fmtUSD(scopeGross)}</div></div>
+          <div class="receipt-item deduction"><div class="label">Tax</div><div class="value">-${fmtUSD(scopeTax)}</div></div>
+          <div class="receipt-item highlight"><div class="label">After tax (US$)</div><div class="value">${fmtUSD(scopeNet)}</div></div>
+          <div class="receipt-item highlight"><div class="label">After tax (CA$)</div><div class="value">${fmtCAD(scopeNetCAD)}</div></div>
         </div>
         ${isOverall ? '' : `
         <hr class="receipt-divider">
-        <div class="receipt-item"><div class="label">All time</div><div class="value">${allHours.toFixed(1)}h · ${fmtUSD(allUSD)} · ${fmtCAD(allCAD)}</div></div>`}
+        <div class="receipt-item"><div class="label">All time, after tax</div><div class="value">${allHours.toFixed(1)}h · ${fmtUSD(allNet)} · ${fmtCAD(allNetCAD)}</div></div>`}
       </div>
       <div class="chart-pair">
         <div class="chart-card">
@@ -1191,8 +1199,8 @@ function renderMyHoursMain(main){
           <div id="myHoursChart"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-card-title">${isOverall ? 'Earned per month' : 'Earned per day'} (US$)</div>
-          <div class="chart-card-total">${fmtUSD(scopeUSD)}</div>
+          <div class="chart-card-title">${isOverall ? 'Earned per month' : 'Earned per day'} · after tax (US$)</div>
+          <div class="chart-card-total">${fmtUSD(scopeNet)}</div>
           <div id="myEarnedChart"></div>
         </div>
       </div>
@@ -1208,17 +1216,18 @@ function renderMyHoursMain(main){
       ${groups.length ? groups.map(g => `
       <div style="padding:12px 20px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-weight:500;background:var(--surface-soft);display:flex;justify-content:space-between;align-items:center;">
         <span>${escapeHtml(monthLabel(g.ym))}</span>
-        <span>${g.entries.reduce((t, e) => t + e.hours, 0).toFixed(2)}h · ${fmtUSD(g.entries.reduce((t, e) => t + personalEarnedUSD(e), 0))}</span>
+        <span>${g.entries.reduce((t, e) => t + e.hours, 0).toFixed(2)}h · ${fmtUSD(g.entries.reduce((t, e) => t + personalNetUSD(e), 0))} after tax</span>
       </div>
       <table>
-        <thead><tr><th>Date</th><th>Hours</th><th>Rate</th><th>Earned (US$)</th><th>Earned (CA$)</th><th>Note</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Hours</th><th>Rate</th><th>Gross (US$)</th><th>After tax (US$)</th><th>After tax (CA$)</th><th>Note</th><th></th></tr></thead>
         <tbody>
           ${g.entries.map(e => `<tr>
-            <td data-label="Date">${e.date}</td>
+            <td data-label="Date" style="white-space:nowrap;">${e.date}</td>
             <td data-label="Hours">${e.hours.toFixed(2)}</td>
-            <td data-label="Rate">${fmtUSD(e.rate)}/hr<div class="fx-note">USD @ ${e.usdCadRate.toFixed(4)}</div></td>
-            <td data-label="Earned (US$)">${fmtUSD(personalEarnedUSD(e))}</td>
-            <td data-label="Earned (CA$)">${fmtCAD(personalEarnedCAD(e))}</td>
+            <td data-label="Rate">${fmtUSD(e.rate)}/hr<div class="fx-note">${e.taxPercent ?? 20}% tax · USD @ ${e.usdCadRate.toFixed(4)}</div></td>
+            <td data-label="Gross (US$)">${fmtUSD(personalEarnedUSD(e))}</td>
+            <td data-label="After tax (US$)">${fmtUSD(personalNetUSD(e))}</td>
+            <td data-label="After tax (CA$)">${fmtCAD(personalNetCAD(e))}</td>
             <td class="note-col" data-label="Note">${escapeHtml(e.note || '')}</td>
             <td data-label=""><button class="del-btn my-del-btn" data-id="${e.id}">Delete</button></td>
           </tr>`).join('')}
@@ -1246,11 +1255,23 @@ function renderMyHoursMain(main){
     const v = parseFloat(e.target.value);
     if(isNaN(v) || v <= 0){ e.target.value = rate; return; }
     try{
-      await savePersonalRate(v);
+      await savePersonalSettings({ personalRate: v });
       renderMain();
     }catch(err){
       alert('Could not save your rate: ' + err.message);
       e.target.value = rate;
+    }
+  };
+
+  document.getElementById('myTaxInput').onchange = async (e) => {
+    const v = parseFloat(e.target.value);
+    if(isNaN(v) || v < 0 || v > 100){ e.target.value = taxPct; return; }
+    try{
+      await savePersonalSettings({ personalTaxPercent: v });
+      renderMain();
+    }catch(err){
+      alert('Could not save your tax rate: ' + err.message);
+      e.target.value = taxPct;
     }
   };
 

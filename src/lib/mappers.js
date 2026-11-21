@@ -4,6 +4,7 @@ export function mapSettings(row) {
     exchangeManual: !!row.exchange_manual,
     usdCadRate: row.usd_cad_rate ?? null,
     personalRate: row.personal_rate ?? 17,
+    personalTaxPercent: row.personal_tax_percent ?? 20,
   };
 }
 
@@ -71,6 +72,7 @@ export function mapPersonalEntry(row) {
     note: row.note || '',
     rate: row.rate,
     usdCadRate: row.usd_cad_rate,
+    taxPercent: row.tax_percent ?? 20,
     createdAt: row.created_at,
   };
 }

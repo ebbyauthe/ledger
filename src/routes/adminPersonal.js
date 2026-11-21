@@ -14,7 +14,7 @@ router.post('/personal-entries', requireAdmin, async (req, res) => {
   const parsed = parseEntryInput(req.body);
   if (!parsed) return res.status(400).json({ error: 'invalid date, or hours must be between 0 and 24' });
 
-  const settingsRow = (await db.execute({ sql: 'SELECT personal_rate FROM settings WHERE account_id = ?', args: [req.accountId] })).rows[0];
+  const settingsRow = (await db.execute({ sql: 'SELECT personal_rate, personal_tax_percent FROM settings WHERE account_id = ?', args: [req.accountId] })).rows[0];
   const rate = settingsRow?.personal_rate;
   if (!(rate > 0)) return res.status(400).json({ error: 'set your hourly rate first' });
 
@@ -29,11 +29,12 @@ router.post('/personal-entries', requireAdmin, async (req, res) => {
     note: typeof parsed.note === 'string' ? parsed.note.trim().slice(0, 500) : '',
     rate,
     usd_cad_rate: usdCadRate,
+    tax_percent: settingsRow.personal_tax_percent ?? 20,
     created_at: Date.now(),
   };
   await db.execute({
-    sql: 'INSERT INTO personal_entries (id, account_id, date, hours, note, rate, usd_cad_rate, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    args: [row.id, row.account_id, row.date, row.hours, row.note, row.rate, row.usd_cad_rate, row.created_at],
+    sql: 'INSERT INTO personal_entries (id, account_id, date, hours, note, rate, usd_cad_rate, tax_percent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [row.id, row.account_id, row.date, row.hours, row.note, row.rate, row.usd_cad_rate, row.tax_percent, row.created_at],
   });
   res.status(201).json(mapPersonalEntry(row));
 });
