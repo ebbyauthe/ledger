@@ -43,11 +43,13 @@ export function cadHourlyRate(rate, currency, entryUsdCad, fallbackUsdCad){
   return (rate || 0) * (entryUsdCad || fallbackUsdCad || 0);
 }
 
+// sharePct is only a fallback: each entry carries the share % stamped when it was logged, so
+// changing a worker's share never rewrites past pay.
 export function calcEntryRow(entry, sharePct){
   const { rate, currency, taxPercent, exchangeRate } = resolveJobRate(entry.jobId);
   const gross = entry.hours * cadHourlyRate(rate, currency, entry.usdCadRate, state.settings.usdCadRate);
   const tax = gross * taxPercent / 100;
-  const workerPay = gross * sharePct / 100;
+  const workerPay = gross * (entry.sharePercent ?? sharePct) / 100;
   const workerPayNGN = workerPay * exchangeRate;
   return { gross, tax, workerPay, workerPayNGN };
 }

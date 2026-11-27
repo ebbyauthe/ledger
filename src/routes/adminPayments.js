@@ -32,7 +32,7 @@ router.post('/payments/:workerId', requireAdmin, async (req, res) => {
   const settingsRow = (await db.execute({ sql: 'SELECT usd_cad_rate FROM settings WHERE account_id = ?', args: [accountId] })).rows[0];
   const items = unpaidRows.map(row => ({
     id: row.id,
-    cents: Math.round(row.hours * cadHourlyRate(row.job_rate, row.job_currency, row.usd_cad_rate, settingsRow?.usd_cad_rate) * worker.share_percent / 100 * 100),
+    cents: Math.round(row.hours * cadHourlyRate(row.job_rate, row.job_currency, row.usd_cad_rate, settingsRow?.usd_cad_rate) * (row.share_percent ?? worker.share_percent) / 100 * 100),
   }));
 
   const targetCents = Math.round(amount * 100);

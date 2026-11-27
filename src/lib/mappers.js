@@ -36,6 +36,7 @@ export function mapEntry(row) {
     periodId: row.period_id || null,
     jobId: row.job_id || null,
     usdCadRate: row.usd_cad_rate ?? null,
+    sharePercent: row.share_percent ?? null,
   };
 }
 

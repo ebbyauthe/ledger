@@ -336,6 +336,11 @@ input[type="checkbox"]{ accent-color: var(--accent); width: 16px; height: 16px; 
   font-variant-numeric: tabular-nums;
   padding: 6px 10px;
 }
+.share-hint{
+  font-size: 11px;
+  opacity: .75;
+  margin-right: 4px;
+}
 
 /* Stat card (historically "receipt") — clean white tile, big numbers */
 .receipt{

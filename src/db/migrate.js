@@ -288,6 +288,15 @@ export async function migrate() {
   if (!entryCols3.includes('usd_cad_rate')) {
     await db.execute('ALTER TABLE entries ADD COLUMN usd_cad_rate REAL');
   }
+  // Each entry stamps the worker's share % when it's logged, so changing a worker's share only
+  // applies going forward. Existing entries are frozen at the share their worker has right now.
+  if (!entryCols3.includes('share_percent')) {
+    await db.execute('ALTER TABLE entries ADD COLUMN share_percent REAL');
+    await db.execute(`
+      UPDATE entries SET share_percent = (SELECT share_percent FROM workers WHERE workers.id = entries.worker_id)
+      WHERE share_percent IS NULL
+    `);
+  }
   const settingsCols3 = (await db.execute('PRAGMA table_info(settings)')).rows.map(r => r.name);
   if (!settingsCols3.includes('usd_cad_rate')) {
     await db.execute('ALTER TABLE settings ADD COLUMN usd_cad_rate REAL');

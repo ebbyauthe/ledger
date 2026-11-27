@@ -20,7 +20,7 @@ async function getDefaultJobId(accountId) {
 
 // Returns { entry } on success, or { status, error } so the route can respond accordingly.
 async function addEntry(workerId, accountId, { date, hours, note, periodId, jobId }) {
-  const worker = (await db.execute({ sql: 'SELECT id FROM workers WHERE id = ? AND account_id = ?', args: [workerId, accountId] })).rows[0];
+  const worker = (await db.execute({ sql: 'SELECT id, share_percent FROM workers WHERE id = ? AND account_id = ?', args: [workerId, accountId] })).rows[0];
   if (!worker) return { status: 404, error: 'worker not found' };
   let resolvedPeriodId = periodId;
   if (resolvedPeriodId) {
@@ -44,12 +44,14 @@ async function addEntry(workerId, accountId, { date, hours, note, periodId, jobI
     if (!usdCadRate) return { status: 503, error: "couldn't get the USD to CAD exchange rate right now, try again in a minute" };
   }
 
+  // Lock in the worker's current share so a later change to it never rewrites this entry's pay.
+  const sharePercent = worker.share_percent;
   const id = uid();
   await db.execute({
-    sql: 'INSERT INTO entries (id, worker_id, date, hours, note, period_id, account_id, job_id, usd_cad_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    args: [id, workerId, date, hours, note || '', resolvedPeriodId, accountId, resolvedJobId, usdCadRate],
+    sql: 'INSERT INTO entries (id, worker_id, date, hours, note, period_id, account_id, job_id, usd_cad_rate, share_percent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [id, workerId, date, hours, note || '', resolvedPeriodId, accountId, resolvedJobId, usdCadRate, sharePercent],
   });
-  return { entry: { id, date, hours, note: note || '', paid: false, periodId: resolvedPeriodId, jobId: resolvedJobId, usdCadRate } };
+  return { entry: { id, date, hours, note: note || '', paid: false, periodId: resolvedPeriodId, jobId: resolvedJobId, usdCadRate, sharePercent } };
 }
 
 router.post('/entries/:workerId', requireAdmin, async (req, res) => {

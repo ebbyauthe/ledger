@@ -351,7 +351,8 @@ function renderMain(){
       </div>
       <div class="share-field">
         Worker share of gross
-        <input type="number" id="shareInput" min="0" max="100" step="1" value="${worker.sharePercent}">%
+        <input type="number" id="shareInput" min="0" max="100" step="1" value="${worker.sharePercent}" title="Applies to new entries only — past entries keep the share they were logged at">%
+        <span class="share-hint">new entries only</span>
         <button class="settings-toggle" id="resetPasswordBtn">Reset password</button>
         <button class="settings-toggle" id="deleteWorkerBtn" style="color:var(--rust);">Delete worker</button>
       </div>

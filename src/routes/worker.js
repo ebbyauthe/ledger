@@ -112,7 +112,7 @@ router.get('/workers/:id/summary', requireWorkerSession, async (req, res) => {
     const e = mapEntry(row);
     const fx = (row.job_fx_mode === 'custom' && row.job_exchange_rate) ? row.job_exchange_rate : (settingsRow.exchange_rate || 0);
     const gross = e.hours * cadHourlyRate(row.job_rate, row.job_currency, row.usd_cad_rate, settingsRow.usd_cad_rate);
-    const workerPay = (gross * sharePct) / 100;
+    const workerPay = (gross * (row.share_percent ?? sharePct)) / 100;
     const workerPayNGN = workerPay * fx;
     totalHours += e.hours;
     totalWorkerPay += workerPay;
